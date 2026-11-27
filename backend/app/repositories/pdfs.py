@@ -25,11 +25,11 @@ def _ensure_utc(value: datetime) -> datetime:
 
 def _parse_compression(raw_config: str | None) -> PdfCompressionMode:
     if not raw_config or raw_config == "{}":
-        return "lossless"
+        return "compact"
     try:
         return PdfConfig.model_validate_json(raw_config).compression
     except Exception:
-        return "lossless"
+        return "compact"
 
 
 def _escape_like(term: str) -> str:

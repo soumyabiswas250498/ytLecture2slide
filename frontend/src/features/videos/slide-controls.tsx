@@ -1,17 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  Play,
-  RotateCcw,
-  RotateCw,
-  Trash2,
-  XCircle,
-} from "lucide-react";
+import { Eye, Play, RotateCcw, RotateCw, Trash2, XCircle } from "lucide-react";
 import { ActionButton } from "@/components/shared/action-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DetailsPopover } from "@/components/shared/details-popover";
 import { ProgressIndicator } from "@/components/shared/progress-indicator";
 import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
 import { Modal } from "@/components/ui/modal";
@@ -42,7 +34,6 @@ export function SlideControls({
   const client = useQueryClient();
   const [preview, setPreview] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ["slide-processing", videoId],
@@ -75,12 +66,16 @@ export function SlideControls({
   const state = query.data;
   const active = Boolean(state?.requested || state?.status === "processing");
   const ready = extraction.data?.status === "extracted";
-  const hasDiagnostics = Boolean(
-    state && (state.reconstructed_count > 0 || state.review_count > 0),
+  const hasDetails = Boolean(
+    state &&
+    (state.input_count > 0 ||
+      state.output_directory ||
+      state.reconstructed_count > 0 ||
+      state.review_count > 0),
   );
 
   return (
-    <div className="min-w-[176px] space-y-1">
+    <div className="min-w-[140px] space-y-1">
       {query.isPending && (
         <span className="text-xs text-muted-foreground">Loading slides…</span>
       )}
@@ -96,37 +91,13 @@ export function SlideControls({
               label={state.status}
               tone={slideStatusTone[state.status] ?? "neutral"}
             />
-            {state.input_count > 0 && (
+            {(state.output_count > 0 || state.status === "processed") && (
               <span className="text-[11px] tabular-nums text-muted-foreground">
-                In {state.input_count} · +{state.additional_count} · Dup{" "}
-                {state.duplicate_count} · Out {state.output_count}
+                {state.output_count}{" "}
+                {state.output_count === 1 ? "slide" : "slides"}
               </span>
             )}
           </div>
-
-          {hasDiagnostics && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setDetailsOpen((prev) => !prev)}
-                className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                {detailsOpen ? "Hide details" : "Details"}
-                {detailsOpen ? (
-                  <ChevronUp size={11} aria-hidden="true" />
-                ) : (
-                  <ChevronDown size={11} aria-hidden="true" />
-                )}
-              </button>
-              {detailsOpen && (
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Reconstructed: {state.reconstructed_count}
-                  {state.review_count > 0 &&
-                    ` · Potentially obstructed: ${state.review_count} (retained)`}
-                </p>
-              )}
-            </div>
-          )}
 
           {active && (
             <ProgressIndicator
@@ -139,16 +110,47 @@ export function SlideControls({
           {state.error && (
             <p
               role="alert"
-              className="max-w-[220px] truncate text-xs text-red-700"
+              className="max-w-[200px] truncate text-xs text-red-700"
               title={state.error}
             >
               {state.error}
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-nowrap items-center gap-1">
+            {hasDetails && (
+              <DetailsPopover
+                title="Slide processing"
+                ariaLabel="View slide processing details"
+                items={[
+                  { label: "Input frames", value: state.input_count },
+                  { label: "Additional frames", value: state.additional_count },
+                  {
+                    label: "Confirmed duplicates excluded",
+                    value: state.duplicate_count,
+                  },
+                  { label: "Output slides", value: state.output_count },
+                  {
+                    label: "Reconstructed slides",
+                    value: state.reconstructed_count,
+                  },
+                  {
+                    label: "Potentially obstructed slides",
+                    value: state.review_count,
+                  },
+                ]}
+                warnings={
+                  state.review_count > 0
+                    ? [
+                        `${state.review_count} potentially obstructed ${state.review_count === 1 ? "slide" : "slides"} retained for manual review.`,
+                      ]
+                    : []
+                }
+              />
+            )}
             {!active && ready && !isExcluded && (
               <ActionButton
+                size="icon"
                 tooltip={
                   state.output_directory ? "Reprocess slides" : "Process slides"
                 }
@@ -159,55 +161,55 @@ export function SlideControls({
                 onClick={() => action.mutate("start")}
               >
                 {state.output_directory ? (
-                  <RotateCw size={12} aria-hidden="true" />
+                  <RotateCw size={14} aria-hidden="true" />
                 ) : (
-                  <Play size={12} aria-hidden="true" />
+                  <Play size={14} aria-hidden="true" />
                 )}
-                {state.output_directory ? "Reprocess" : "Process"}
               </ActionButton>
             )}
             {active && (
               <ActionButton
+                size="icon"
                 tooltip="Cancel slide processing"
                 ariaLabel="Cancel slides"
                 disabled={action.isPending}
                 onClick={() => action.mutate("cancel")}
               >
-                <XCircle size={12} aria-hidden="true" />
-                Cancel
+                <XCircle size={14} aria-hidden="true" />
               </ActionButton>
             )}
             {!active &&
               !isExcluded &&
               ["failed", "cancelled"].includes(state.status) && (
                 <ActionButton
+                  size="icon"
                   tooltip="Retry slide processing"
                   ariaLabel="Retry slides"
                   disabled={action.isPending}
                   onClick={() => action.mutate("retry")}
                 >
-                  <RotateCcw size={12} aria-hidden="true" />
-                  Retry
+                  <RotateCcw size={14} aria-hidden="true" />
                 </ActionButton>
               )}
             {state.output_directory && (
               <ActionButton
+                size="icon"
                 tooltip="Preview and compare slides"
                 ariaLabel="Compare slides"
                 onClick={() => setPreview(true)}
               >
-                <Eye size={12} aria-hidden="true" />
-                Preview
+                <Eye size={14} aria-hidden="true" />
               </ActionButton>
             )}
             {!active && state.output_directory && (
               <ActionButton
+                size="icon"
                 tooltip="Delete processed slides"
                 ariaLabel="Delete processed slides"
                 className="text-red-700 hover:bg-red-50"
                 onClick={() => setConfirmDelete(true)}
               >
-                <Trash2 size={12} aria-hidden="true" />
+                <Trash2 size={14} aria-hidden="true" />
               </ActionButton>
             )}
           </div>

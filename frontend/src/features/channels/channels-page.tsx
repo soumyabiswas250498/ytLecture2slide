@@ -422,12 +422,12 @@ export function ChannelsPage() {
           <DataTable>
             <thead>
               <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground uppercase">
-                <th className="px-3 py-2.5 font-semibold">Channel name</th>
-                <th className="px-3 py-2.5 font-semibold">Channel link</th>
-                <th className="px-3 py-2.5 font-semibold">Sample video</th>
-                <th className="px-3 py-2.5 font-semibold">Search keyword</th>
-                <th className="px-3 py-2.5 font-semibold">Status</th>
-                <th className="px-3 py-2.5 text-right font-semibold">
+                <th className="px-2.5 py-1.5 font-semibold">Channel name</th>
+                <th className="px-2.5 py-1.5 font-semibold">Channel link</th>
+                <th className="px-2.5 py-1.5 font-semibold">Sample video</th>
+                <th className="px-2.5 py-1.5 font-semibold">Search keyword</th>
+                <th className="px-2.5 py-1.5 font-semibold">Status</th>
+                <th className="px-2.5 py-1.5 text-right font-semibold">
                   Actions
                 </th>
               </tr>
@@ -438,10 +438,10 @@ export function ChannelsPage() {
                   key={channel.id}
                   className="transition-colors hover:bg-muted/20"
                 >
-                  <td className="px-3 py-2 font-medium text-foreground">
+                  <td className="px-2.5 py-1.5 font-medium text-foreground">
                     {channel.name}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     <a
                       href={channel.channel_url}
                       target="_blank"
@@ -458,7 +458,7 @@ export function ChannelsPage() {
                       />
                     </a>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     {channel.sample_video_url ? (
                       <a
                         href={channel.sample_video_url}
@@ -479,20 +479,21 @@ export function ChannelsPage() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     <span className="inline-block rounded bg-muted px-2 py-0.5 text-xs font-medium">
                       {channel.search_keyword}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2.5 py-1.5">
                     <StatusBadge
                       label={channel.is_active ? "Active" : "Inactive"}
                       tone={channel.is_active ? "success" : "neutral"}
                     />
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-2.5 py-1.5 text-right">
                     <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                       <ActionButton
+                        size="icon"
                         tooltip={
                           channel.is_active
                             ? `Disable ${channel.name}`
@@ -507,10 +508,10 @@ export function ChannelsPage() {
                           });
                         }}
                       >
-                        <Power size={12} aria-hidden="true" />
-                        {channel.is_active ? "Disable" : "Enable"}
+                        <Power size={14} aria-hidden="true" />
                       </ActionButton>
                       <ActionButton
+                        size="icon"
                         tooltip={`Edit ${channel.name}`}
                         ariaLabel={`Edit ${channel.name}`}
                         onClick={() => {
@@ -519,10 +520,10 @@ export function ChannelsPage() {
                           setFormOpen(true);
                         }}
                       >
-                        <Pencil size={12} aria-hidden="true" />
-                        Edit
+                        <Pencil size={14} aria-hidden="true" />
                       </ActionButton>
                       <ActionButton
+                        size="icon"
                         tooltip={`Delete ${channel.name}`}
                         ariaLabel={`Delete ${channel.name}`}
                         className="text-red-700 hover:bg-red-50"
@@ -531,8 +532,7 @@ export function ChannelsPage() {
                           setDeletingChannel(channel);
                         }}
                       >
-                        <Trash2 size={12} aria-hidden="true" />
-                        Delete
+                        <Trash2 size={14} aria-hidden="true" />
                       </ActionButton>
                     </div>
                   </td>

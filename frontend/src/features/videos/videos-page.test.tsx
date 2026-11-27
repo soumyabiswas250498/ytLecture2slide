@@ -500,7 +500,15 @@ describe("VideosPage", () => {
 
     render(<VideosPage />, { wrapper });
     expect(await screen.findByText("Network timeout")).toBeInTheDocument();
-    expect(screen.getByText(/1280x720 · 10\.0 MB/)).toBeInTheDocument();
+    expect(screen.getByText("10.0 MB")).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /View download details for Downloaded Lecture/i,
+      }),
+    );
+    expect(await screen.findByText("1280x720")).toBeVisible();
+    await user.keyboard("{Escape}");
 
     await user.click(
       screen.getByRole("button", {
@@ -523,5 +531,34 @@ describe("VideosPage", () => {
     await waitFor(() =>
       expect(videosService.deleteLocalVideo).toHaveBeenCalledWith(2),
     );
+  });
+
+  it("displays preserved channel_name or Unknown Channel fallback when channel is deleted", async () => {
+    vi.mocked(videosService.getVideoSummary).mockResolvedValue(emptySummary);
+    vi.mocked(videosService.listVideos).mockResolvedValue({
+      ...videoList,
+      items: [
+        {
+          ...sampleVideo,
+          id: 10,
+          channel_id: null,
+          channel_name: "BSSEI Competitive",
+          title: "Preserved Channel Video",
+        },
+        {
+          ...sampleVideo,
+          id: 11,
+          channel_id: null,
+          channel_name: null,
+          title: "Orphan Video",
+        },
+      ],
+      total: 2,
+    });
+
+    render(<VideosPage />, { wrapper });
+    expect(await screen.findByText("BSSEI Competitive")).toBeInTheDocument();
+    expect(screen.getByText("Unknown Channel")).toBeInTheDocument();
+    expect(screen.queryByText("Deleted channel")).not.toBeInTheDocument();
   });
 });

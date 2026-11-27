@@ -144,9 +144,22 @@ it("generates, previews, and deletes a PDF with confirmation", async () => {
     name: "Generate PDF for WBPSC IDO History Class",
   });
   await waitFor(() => expect(genBtn).toBeEnabled());
+  expect(genBtn.className).toContain("h-8 w-8");
+  expect(
+    screen.queryByRole("combobox", {
+      name: /Compression mode/i,
+    }),
+  ).not.toBeInTheDocument();
   await user.click(genBtn);
 
   expect(await screen.findByText(/4 pages/)).toBeInTheDocument();
+  await user.click(
+    screen.getByRole("button", {
+      name: "View PDF details for WBPSC IDO History Class",
+    }),
+  );
+  expect(await screen.findByText("Compact (JPEG 85)")).toBeVisible();
+  await user.keyboard("{Escape}");
   await user.click(
     screen.getByRole("button", {
       name: "Preview PDF for WBPSC IDO History Class",

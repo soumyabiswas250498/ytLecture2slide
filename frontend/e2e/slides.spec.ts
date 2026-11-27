@@ -136,10 +136,43 @@ test("processes slides and compares results in fullscreen modal without crop con
   await page
     .getByRole("button", { name: "Process Slides", exact: true })
     .click();
-  await expect(page.getByText("In 3 · +2 · Dup 1 · Out 2")).toBeVisible();
+  await expect(page.getByText("2 slides")).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Adjust board crop/i }),
   ).toHaveCount(0);
+
+  // Verify DetailsPopover does not change row height, is not clipped, and works at 1280/1440/1920px
+  const row = page.locator("tbody tr").first();
+  const initialRowBox = await row.boundingBox();
+  expect(initialRowBox).not.toBeNull();
+
+  for (const width of [1280, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    const rowBefore = await row.boundingBox();
+    const infoBtn = page.getByRole("button", {
+      name: "View slide processing details",
+    });
+    await infoBtn.click();
+    const popover = page.getByRole("dialog", { name: "Slide processing" });
+    await expect(popover).toBeVisible();
+    await expect(popover.getByText("Input frames")).toBeVisible();
+    await expect(
+      popover.getByText("Confirmed duplicates excluded"),
+    ).toBeVisible();
+
+    const rowAfter = await row.boundingBox();
+    expect(rowAfter?.height).toBeCloseTo(rowBefore!.height, 1);
+
+    const popoverBox = await popover.boundingBox();
+    expect(popoverBox).not.toBeNull();
+    expect(popoverBox!.x).toBeGreaterThanOrEqual(0);
+    expect(popoverBox!.x + popoverBox!.width).toBeLessThanOrEqual(width);
+    expect(popoverBox!.height).toBeGreaterThan(80);
+
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+  }
+
   await page.getByRole("button", { name: "Compare slides" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();

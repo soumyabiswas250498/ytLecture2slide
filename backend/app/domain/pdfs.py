@@ -49,7 +49,7 @@ class PdfConfig(BaseModel):
 
     images_per_page: Literal[1] = 1
     orientation: Literal["landscape"] = "landscape"
-    compression: PdfCompressionMode = "lossless"
+    compression: PdfCompressionMode = "compact"
     smartboard_cropping: Literal[False] = False
     include_page_numbers: bool = True
     include_timestamps: bool = True
@@ -96,7 +96,7 @@ class PdfGenerationResult(BaseModel):
     page_count: int = Field(ge=1)
     file_size_bytes: int = Field(ge=1)
     duration_seconds: float = Field(ge=0)
-    compression: PdfCompressionMode = "lossless"
+    compression: PdfCompressionMode = "compact"
     pages: list[PdfPageValidation]
 
 
@@ -116,7 +116,7 @@ class PdfState(BaseModel):
     pdf_filename: str | None = None
     page_count: int = 0
     file_size_bytes: int = 0
-    compression: PdfCompressionMode = "lossless"
+    compression: PdfCompressionMode = "compact"
     configuration: str = "{}"
     started_at: datetime | None = None
     completed_at: datetime | None = None
@@ -137,7 +137,7 @@ class PdfLibraryItem(BaseModel):
     page_count: int
     file_size_bytes: int
     pdf_filename: str
-    compression: PdfCompressionMode = "lossless"
+    compression: PdfCompressionMode = "compact"
     source_slide_generation: str | None = None
     is_excluded: bool = False
 

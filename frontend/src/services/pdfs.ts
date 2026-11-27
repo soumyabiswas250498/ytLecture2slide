@@ -38,7 +38,7 @@ export const pdfStateSchema = z.object({
   pdf_filename: z.string().nullable(),
   page_count: z.number(),
   file_size_bytes: z.number(),
-  compression: pdfCompressionModeSchema.optional().default("lossless"),
+  compression: pdfCompressionModeSchema.optional().default("compact"),
   started_at: z.string().nullable(),
   completed_at: z.string().nullable(),
   retry_count: z.number(),
@@ -57,7 +57,7 @@ export const pdfLibraryItemSchema = z.object({
   page_count: z.number(),
   file_size_bytes: z.number(),
   pdf_filename: z.string(),
-  compression: pdfCompressionModeSchema.optional().default("lossless"),
+  compression: pdfCompressionModeSchema.optional().default("compact"),
   source_slide_generation: z.string().nullable(),
   is_excluded: z.boolean().optional().default(false),
 });

@@ -14,6 +14,7 @@ import {
 import { ActionButton } from "@/components/shared/action-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
+import { DetailsPopover } from "@/components/shared/details-popover";
 import { FilterToolbar } from "@/components/shared/filter-toolbar";
 import { NotificationAlert } from "@/components/shared/notification-alert";
 import { PageContainer } from "@/components/shared/page-container";
@@ -661,7 +662,7 @@ export function VideosPage() {
           <DataTable>
             <thead>
               <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground uppercase">
-                <th className="w-8 px-2 py-2 text-left">
+                <th className="w-8 px-2 py-1.5 text-left">
                   <input
                     type="checkbox"
                     aria-label="Select all videos on page"
@@ -671,27 +672,38 @@ export function VideosPage() {
                     className="h-4 w-4 rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </th>
-                <th className="w-14 px-1.5 py-2 text-left font-semibold">
+                <th className="w-14 px-1.5 py-1.5 text-left font-semibold">
                   <span className="sr-only">Thumbnail</span>
                 </th>
-                <th className="px-2 py-2 text-left font-semibold">Title</th>
-                <th className="px-2 py-2 text-left font-semibold">Channel</th>
-                <th className="px-2 py-2 text-left font-semibold">Duration</th>
-                <th className="px-2 py-2 text-left font-semibold">Published</th>
-                <th className="px-2 py-2 text-left font-semibold">Download</th>
-                <th className="px-2 py-2 text-left font-semibold">Frames</th>
-                <th className="px-2 py-2 text-left font-semibold">Slides</th>
-                <th className="px-2 py-2 text-left font-semibold">PDF</th>
-                <th className="px-2 py-2 text-right font-semibold">Actions</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Title</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Channel</th>
+                <th className="px-2 py-1.5 text-left font-semibold">
+                  Duration
+                </th>
+                <th className="px-2 py-1.5 text-left font-semibold">
+                  Published
+                </th>
+                <th className="px-2 py-1.5 text-left font-semibold">
+                  Download
+                </th>
+                <th className="px-2 py-1.5 text-left font-semibold">Frames</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Slides</th>
+                <th className="px-2 py-1.5 text-left font-semibold">PDF</th>
+                <th className="px-2 py-1.5 text-right font-semibold">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {videoList.items.map((video) => {
                 const channelLabel =
-                  video.channel_id !== null
-                    ? (channelNameById.get(video.channel_id) ??
-                      `Channel #${video.channel_id}`)
-                    : "Deleted channel";
+                  (video.channel_id !== null
+                    ? channelNameById.get(video.channel_id)
+                    : undefined) ??
+                  video.channel_name ??
+                  (video.channel_id !== null
+                    ? `Channel #${video.channel_id}`
+                    : "Unknown Channel");
                 const live = liveProgressByVideoId.get(video.id);
                 const dlStatus = live?.status ?? video.download_status;
                 const progressPct =
@@ -707,7 +719,7 @@ export function VideosPage() {
                         : "align-top transition-colors hover:bg-muted/20"
                     }
                   >
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-1.5">
                       <input
                         type="checkbox"
                         aria-label={`Select ${video.title}`}
@@ -719,7 +731,7 @@ export function VideosPage() {
                         className="mt-1 h-4 w-4 rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
                       />
                     </td>
-                    <td className="px-1.5 py-2">
+                    <td className="px-1.5 py-1.5">
                       {video.thumbnail_url ? (
                         <img
                           src={video.thumbnail_url}
@@ -736,7 +748,7 @@ export function VideosPage() {
                         </div>
                       )}
                     </td>
-                    <td className="max-w-[200px] px-2 py-2">
+                    <td className="max-w-[200px] px-2 py-1.5">
                       <p className="line-clamp-2 text-xs font-medium leading-snug">
                         {video.title}
                       </p>
@@ -773,21 +785,23 @@ export function VideosPage() {
                         </a>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted-foreground">
                       {channelLabel}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs tabular-nums text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-1.5 text-xs tabular-nums text-muted-foreground">
                       {formatDuration(video.duration_seconds)}
                     </td>
-                    <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                    <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted-foreground">
                       {formatIST(video.published_at)}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-1.5">
                       <div className="space-y-1">
-                        <StatusBadge
-                          label={dlStatus}
-                          tone={DOWNLOAD_STATUS_TONE[dlStatus] ?? "neutral"}
-                        />
+                        <div>
+                          <StatusBadge
+                            label={dlStatus}
+                            tone={DOWNLOAD_STATUS_TONE[dlStatus] ?? "neutral"}
+                          />
+                        </div>
                         {dlStatus === "downloading" && (
                           <ProgressIndicator
                             className="w-32"
@@ -804,13 +818,6 @@ export function VideosPage() {
                             }`}
                           />
                         )}
-                        {dlStatus === "downloaded" && (
-                          <p className="whitespace-nowrap text-[11px] text-muted-foreground">
-                            {video.actual_resolution ?? "Verified"}
-                            {video.file_size_bytes != null &&
-                              ` · ${formatBytes(video.file_size_bytes)}`}
-                          </p>
-                        )}
                         {(dlStatus === "failed" || dlStatus === "cancelled") &&
                           video.download_error && (
                             <p
@@ -820,9 +827,64 @@ export function VideosPage() {
                               {video.download_error}
                             </p>
                           )}
+                        {(dlStatus === "downloaded" ||
+                          video.actual_resolution ||
+                          video.video_codec ||
+                          video.file_size_bytes != null ||
+                          video.download_retry_count > 0) && (
+                          <div className="flex flex-nowrap items-center gap-1.5">
+                            {dlStatus === "downloaded" &&
+                              video.file_size_bytes != null && (
+                                <span className="whitespace-nowrap text-[11px] tabular-nums text-muted-foreground">
+                                  {formatBytes(video.file_size_bytes)}
+                                </span>
+                              )}
+                            <DetailsPopover
+                              title="Download metadata"
+                              ariaLabel={`View download details for ${video.title}`}
+                              items={[
+                                {
+                                  label: "Resolution",
+                                  value: video.actual_resolution,
+                                },
+                                {
+                                  label: "Duration",
+                                  value:
+                                    video.duration_seconds > 0
+                                      ? formatDuration(video.duration_seconds)
+                                      : null,
+                                },
+                                {
+                                  label: "Codec",
+                                  value: video.video_codec,
+                                },
+                                {
+                                  label: "File size",
+                                  value:
+                                    video.file_size_bytes != null
+                                      ? formatBytes(video.file_size_bytes)
+                                      : null,
+                                },
+                                {
+                                  label: "Retries",
+                                  value:
+                                    video.download_retry_count > 0
+                                      ? video.download_retry_count
+                                      : null,
+                                },
+                                {
+                                  label: "Completed",
+                                  value: video.download_completed_at
+                                    ? formatIST(video.download_completed_at)
+                                    : null,
+                                },
+                              ]}
+                            />
+                          </div>
+                        )}
                       </div>
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-1.5">
                       <ExtractionControls
                         videoId={video.id}
                         downloaded={dlStatus === "downloaded"}
@@ -830,23 +892,24 @@ export function VideosPage() {
                         isExcluded={video.is_excluded}
                       />
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-1.5">
                       <SlideControls
                         videoId={video.id}
                         isExcluded={video.is_excluded}
                       />
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-2 py-1.5">
                       <PdfControls
                         videoId={video.id}
                         videoTitle={video.title}
                         isExcluded={video.is_excluded}
                       />
                     </td>
-                    <td className="px-2 py-2 text-right">
-                      <div className="inline-flex items-center justify-end gap-1">
+                    <td className="px-2 py-1.5 text-right">
+                      <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                         {dlStatus === "pending" && (
                           <ActionButton
+                            size="icon"
                             tooltip={
                               video.is_excluded
                                 ? "Excluded videos cannot be downloaded"
@@ -858,24 +921,24 @@ export function VideosPage() {
                               downloadMutation.isPending || video.is_excluded
                             }
                           >
-                            <Download size={12} aria-hidden="true" />
-                            Download
+                            <Download size={14} aria-hidden="true" />
                           </ActionButton>
                         )}
                         {dlStatus === "downloading" && (
                           <ActionButton
+                            size="icon"
                             tooltip={`Cancel download for ${video.title}`}
                             ariaLabel={`Cancel download for ${video.title}`}
                             onClick={() => cancelMutation.mutate(video.id)}
                             disabled={cancelMutation.isPending}
                           >
-                            <XCircle size={12} aria-hidden="true" />
-                            Cancel
+                            <XCircle size={14} aria-hidden="true" />
                           </ActionButton>
                         )}
                         {(dlStatus === "failed" ||
                           dlStatus === "cancelled") && (
                           <ActionButton
+                            size="icon"
                             tooltip={
                               video.is_excluded
                                 ? "Excluded videos cannot be retried"
@@ -887,20 +950,19 @@ export function VideosPage() {
                               retryMutation.isPending || video.is_excluded
                             }
                           >
-                            <RotateCcw size={12} aria-hidden="true" />
-                            Retry
+                            <RotateCcw size={14} aria-hidden="true" />
                           </ActionButton>
                         )}
                         {dlStatus === "downloaded" && (
                           <ActionButton
+                            size="icon"
                             variant="ghost"
                             tooltip={`Delete local video for ${video.title}`}
                             ariaLabel={`Delete local video for ${video.title}`}
                             onClick={() => setDeleteTarget(video)}
                             className="text-red-700 hover:bg-red-50 hover:text-red-800"
                           >
-                            <Trash2 size={12} aria-hidden="true" />
-                            Delete
+                            <Trash2 size={14} aria-hidden="true" />
                           </ActionButton>
                         )}
                       </div>

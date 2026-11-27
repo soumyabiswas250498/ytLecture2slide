@@ -11,10 +11,11 @@ import {
 } from "lucide-react";
 import { ActionButton } from "@/components/shared/action-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DetailsPopover } from "@/components/shared/details-popover";
 import { ProgressIndicator } from "@/components/shared/progress-indicator";
 import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
-import { Select, type SelectOption } from "@/components/ui/select";
 import { PdfPreviewModal } from "@/features/library/pdf-preview-modal";
+import { formatBytes, formatISTDateTime } from "@/lib/utils";
 import {
   deletePdf,
   generatePdf,
@@ -22,7 +23,6 @@ import {
   PDF_COMPRESSION_LABELS,
   pdfAction,
   pdfDownloadUrl,
-  type PdfCompressionMode,
 } from "@/services/pdfs";
 import { getSlideState } from "@/services/slides";
 
@@ -33,15 +33,6 @@ const PDF_STATUS_TONE: Record<string, StatusTone> = {
   failed: "error",
   cancelled: "warning",
 };
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(1)} MB`;
-  return `${(mb / 1024).toFixed(2)} GB`;
-}
 
 export function PdfControls({
   videoId,
@@ -55,9 +46,6 @@ export function PdfControls({
   const client = useQueryClient();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [compressionOverride, setCompressionOverride] = useState<
-    "default" | PdfCompressionMode
-  >("default");
 
   const query = useQuery({
     queryKey: ["pdf-generation", videoId],
@@ -77,11 +65,7 @@ export function PdfControls({
         const hasPdf = Boolean(
           query.data?.pdf_path && query.data?.page_count > 0,
         );
-        return generatePdf(
-          videoId,
-          hasPdf,
-          compressionOverride === "default" ? undefined : compressionOverride,
-        );
+        return generatePdf(videoId, hasPdf);
       }
       return pdfAction(videoId, kind);
     },
@@ -122,8 +106,7 @@ export function PdfControls({
             {hasPublishedPdf && (
               <span className="text-[11px] tabular-nums text-muted-foreground">
                 {state.page_count} {state.page_count === 1 ? "page" : "pages"} ·{" "}
-                {formatBytes(state.file_size_bytes)} ·{" "}
-                {PDF_COMPRESSION_LABELS[state.compression]}
+                {formatBytes(state.file_size_bytes)}
               </span>
             )}
           </div>
@@ -146,28 +129,44 @@ export function PdfControls({
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-1">
-            {!active && !isExcluded && slidesReady && (
-              <Select
-                value={compressionOverride}
-                ariaLabel={`Compression mode for ${videoTitle}`}
-                options={
-                  [
-                    { value: "default", label: "Default compression" },
-                    { value: "lossless", label: "Lossless (PNG)" },
-                    { value: "maximum_quality", label: "Max quality (95)" },
-                    { value: "high_quality", label: "High quality (90)" },
-                    { value: "compact", label: "Compact (85)" },
-                  ] satisfies readonly SelectOption<
-                    "default" | PdfCompressionMode
-                  >[]
-                }
-                onValueChange={setCompressionOverride}
-                className="text-xs"
+          <div className="flex flex-nowrap items-center gap-1">
+            {(hasPublishedPdf || state.status !== "pending") && (
+              <DetailsPopover
+                title="PDF generation"
+                ariaLabel={`View PDF details for ${videoTitle}`}
+                items={[
+                  {
+                    label: "Compression",
+                    value: PDF_COMPRESSION_LABELS[state.compression],
+                  },
+                  {
+                    label: "Pages",
+                    value: state.page_count > 0 ? state.page_count : null,
+                  },
+                  {
+                    label: "File size",
+                    value:
+                      state.file_size_bytes > 0
+                        ? formatBytes(state.file_size_bytes)
+                        : null,
+                  },
+                  { label: "Filename", value: state.pdf_filename },
+                  {
+                    label: "Retries",
+                    value: state.retry_count > 0 ? state.retry_count : null,
+                  },
+                  {
+                    label: "Generated",
+                    value: state.completed_at
+                      ? formatISTDateTime(state.completed_at)
+                      : null,
+                  },
+                ]}
               />
             )}
             {!active && !isExcluded && (
               <ActionButton
+                size="icon"
                 tooltip={
                   !slidesReady
                     ? "Process slides before generating PDF"
@@ -184,23 +183,22 @@ export function PdfControls({
                 onClick={() => action.mutate("generate")}
               >
                 {hasPublishedPdf ? (
-                  <RotateCw size={12} aria-hidden="true" />
+                  <RotateCw size={14} aria-hidden="true" />
                 ) : (
-                  <FileText size={12} aria-hidden="true" />
+                  <FileText size={14} aria-hidden="true" />
                 )}
-                {hasPublishedPdf ? "Regenerate" : "Generate"}
               </ActionButton>
             )}
 
             {active && (
               <ActionButton
+                size="icon"
                 tooltip="Cancel PDF generation"
                 ariaLabel={`Cancel PDF for ${videoTitle}`}
                 disabled={action.isPending}
                 onClick={() => action.mutate("cancel")}
               >
-                <XCircle size={12} aria-hidden="true" />
-                Cancel
+                <XCircle size={14} aria-hidden="true" />
               </ActionButton>
             )}
 
@@ -209,46 +207,47 @@ export function PdfControls({
               slidesReady &&
               ["failed", "cancelled"].includes(state.status) && (
                 <ActionButton
+                  size="icon"
                   tooltip="Retry PDF generation"
                   ariaLabel={`Retry PDF for ${videoTitle}`}
                   disabled={action.isPending}
                   onClick={() => action.mutate("retry")}
                 >
-                  <RotateCcw size={12} aria-hidden="true" />
-                  Retry
+                  <RotateCcw size={14} aria-hidden="true" />
                 </ActionButton>
               )}
 
             {hasPublishedPdf && (
               <>
                 <ActionButton
+                  size="icon"
                   tooltip="Preview PDF"
                   ariaLabel={`Preview PDF for ${videoTitle}`}
                   onClick={() => setPreviewOpen(true)}
                 >
-                  <Eye size={12} aria-hidden="true" />
-                  Preview
+                  <Eye size={14} aria-hidden="true" />
                 </ActionButton>
                 <a
                   href={pdfDownloadUrl(videoId)}
                   download={state.pdf_filename ?? undefined}
                   title="Download PDF"
                   aria-label={`Download PDF for ${videoTitle}`}
-                  className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-muted"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted"
                 >
-                  <Download size={12} aria-hidden="true" />
+                  <Download size={14} aria-hidden="true" />
                 </a>
               </>
             )}
 
             {!active && hasPublishedPdf && (
               <ActionButton
+                size="icon"
                 tooltip="Delete generated PDF"
                 ariaLabel={`Delete PDF for ${videoTitle}`}
                 className="text-red-700 hover:bg-red-50"
                 onClick={() => setConfirmDelete(true)}
               >
-                <Trash2 size={12} aria-hidden="true" />
+                <Trash2 size={14} aria-hidden="true" />
               </ActionButton>
             )}
           </div>

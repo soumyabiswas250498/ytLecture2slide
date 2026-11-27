@@ -4,6 +4,17 @@ Record actual changes to ytLecture2slide here. Maintain a chronological developm
 
 ## [Unreleased]
 
+### Changed — Phase 7 Compact Table Details Popover (2026-11-27)
+
+- **Reusable `Popover` & `DetailsPopover` Components**: Added `@radix-ui/react-popover` and shadcn/ui `Popover` (`frontend/src/components/ui/popover.tsx`, `Portal`-rendered with viewport collision handling) plus `DetailsPopover` (`frontend/src/components/shared/details-popover.tsx`) featuring a 32 × 32 px icon-only info trigger, `"View details"` tooltip, outside-click/Escape dismissal, keyboard navigation, and compact key-value + warning layout that never alters table row height.
+- **Compact Pipeline Columns**: Replaced the inline `Details`/`Hide details` toggle in `SlideControls` (`frontend/src/features/videos/slide-controls.tsx`) with `DetailsPopover` (showing only status, output slide count, and single-row icon actions) and applied `DetailsPopover` consistently across Download (`frontend/src/features/videos/videos-page.tsx`), Frames (`frontend/src/features/videos/extraction-controls.tsx`), Slides, and PDF (`frontend/src/features/videos/pdf-controls.tsx`) columns.
+
+### Changed — Pre-Phase 8 UI & PDF Compression Refinements (2026-11-27)
+
+- **Compact Icon-Only Table Actions**: Added `size="icon"` (`h-8 w-8`, 32 × 32 px) to `Button` (`frontend/src/components/ui/button.tsx`) and replaced text-based action buttons across the Videos table (`videos-page.tsx`, `extraction-controls.tsx`, `slide-controls.tsx`, `pdf-controls.tsx`), Channels table (`channels-page.tsx`), and PDF Library table (`pdf-library-page.tsx`) with single-row icon-only buttons carrying descriptive tooltips, accessible `aria-label`s, and confirmation dialogs for destructive actions.
+- **Default PDF Compression (`compact`, JPEG 85)**: Set `compact` (JPEG quality 85 at original screenshot resolution) as the default compression mode in `PdfConfig`, `PdfState`, `PdfLibraryItem`, `PdfGenerationResult`, `_parse_compression`, `.env.example`, and frontend Zod schemas; added Alembic revision `a1b2c3d4e5f6` to update persisted `pdf_generation_settings` from `"lossless"` to `"compact"` without modifying existing generated PDFs. Removed compression dropdowns from `PdfControls` and `SettingsPage` while retaining internal/API compression support for backward compatibility.
+- **Table Cleanup & Channel Labels**: Reduced table row padding (`py-1.5`) while preserving status badges and processing statistics, and updated `videos-page.tsx` + `videoSchema` (`frontend/src/services/videos.ts`) to display preserved `video.channel_name` or `"Unknown Channel"` fallback instead of `"Deleted channel"`.
+
 ### Changed — Phase 7 Stabilization and PDF Optimization (2026-11-27)
 
 - **Configurable PDF Compression**: Added `PdfCompressionMode` (`lossless` PNG default, `maximum_quality` JPEG 95, `high_quality` JPEG 90, `compact` JPEG 85) in `backend/app/domain/pdfs.py` and single-pass JPEG encoding from source PNGs in `PyMuPdfGenerator` (`backend/app/infrastructure/pdf_generator.py`), preserving original resolution and aspect ratio and recording `compression=<mode>` in PDF metadata.

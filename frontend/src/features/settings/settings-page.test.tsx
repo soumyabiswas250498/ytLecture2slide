@@ -179,31 +179,15 @@ describe("SettingsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders PDF Generation compression settings and saves selection", async () => {
-    const user = userEvent.setup();
+  it("does not render PDF compression dropdown on Settings page", async () => {
     render(<SettingsPage />, { wrapper });
 
-    expect(await screen.findByText("PDF Generation")).toBeInTheDocument();
-    expect(screen.getByText(/Default: Lossless/i)).toBeInTheDocument();
-
-    const trigger = screen.getByRole("combobox", {
-      name: /PDF compression mode/i,
-    });
-    await user.click(trigger);
-    await user.click(
-      screen.getByRole("option", { name: "High quality (JPEG 90)" }),
-    );
-    await user.click(
-      screen.getByRole("button", { name: /Save PDF settings/i }),
-    );
-
-    await waitFor(() => {
-      expect(settingsApi.updatePdfSettings).toHaveBeenCalledWith(
-        "high_quality",
-      );
-    });
+    expect(await screen.findByText("Exclude Keywords")).toBeInTheDocument();
     expect(
-      await screen.findByText(/Saved PDF compression mode: High quality/i),
-    ).toBeInTheDocument();
+      screen.queryByRole("combobox", { name: /PDF compression mode/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Save PDF settings/i }),
+    ).not.toBeInTheDocument();
   });
 });

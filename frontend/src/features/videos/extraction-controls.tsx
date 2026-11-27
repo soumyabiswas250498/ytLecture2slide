@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Eye, Film, RotateCcw, Trash2, XCircle } from "lucide-react";
 import { ActionButton } from "@/components/shared/action-button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DetailsPopover } from "@/components/shared/details-popover";
 import { ProgressIndicator } from "@/components/shared/progress-indicator";
 import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
 import { Modal } from "@/components/ui/modal";
+import { formatISTDateTime } from "@/lib/utils";
 import {
   deleteFrames,
   extractionAction,
@@ -103,12 +105,42 @@ export function ExtractionControls({
             </p>
           )}
 
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-nowrap items-center gap-1">
+            {(state.status !== "pending" ||
+              state.frame_count > 0 ||
+              state.expected_count !== null) && (
+              <DetailsPopover
+                title="Frame extraction"
+                ariaLabel="View frame extraction details"
+                items={[
+                  { label: "Interval", value: `${state.interval_seconds}s` },
+                  { label: "Extracted frames", value: state.frame_count },
+                  { label: "Expected frames", value: state.expected_count },
+                  {
+                    label: "Retries",
+                    value: state.retry_count > 0 ? state.retry_count : null,
+                  },
+                  {
+                    label: "Started",
+                    value: state.started_at
+                      ? formatISTDateTime(state.started_at)
+                      : null,
+                  },
+                  {
+                    label: "Completed",
+                    value: state.completed_at
+                      ? formatISTDateTime(state.completed_at)
+                      : null,
+                  },
+                ]}
+              />
+            )}
             {downloaded &&
               !active &&
               !isExcluded &&
               state.status === "pending" && (
                 <ActionButton
+                  size="icon"
                   tooltip="Extract frames"
                   ariaLabel="Extract Frames"
                   disabled={
@@ -117,19 +149,18 @@ export function ExtractionControls({
                   }
                   onClick={() => action.mutate("start")}
                 >
-                  <Film size={12} aria-hidden="true" />
-                  Extract
+                  <Film size={14} aria-hidden="true" />
                 </ActionButton>
               )}
             {active && (
               <ActionButton
+                size="icon"
                 tooltip="Cancel frame extraction"
                 ariaLabel="Cancel extraction"
                 disabled={action.isPending}
                 onClick={() => action.mutate("cancel")}
               >
-                <XCircle size={12} aria-hidden="true" />
-                Cancel
+                <XCircle size={14} aria-hidden="true" />
               </ActionButton>
             )}
             {downloaded &&
@@ -137,33 +168,34 @@ export function ExtractionControls({
               !isExcluded &&
               ["failed", "cancelled"].includes(state.status) && (
                 <ActionButton
+                  size="icon"
                   tooltip="Retry frame extraction"
                   ariaLabel="Retry extraction"
                   disabled={action.isPending}
                   onClick={() => action.mutate("retry")}
                 >
-                  <RotateCcw size={12} aria-hidden="true" />
-                  Retry
+                  <RotateCcw size={14} aria-hidden="true" />
                 </ActionButton>
               )}
             {state.manifest_path && (
               <ActionButton
+                size="icon"
                 tooltip="Preview extracted frames"
                 ariaLabel="Preview frames"
                 onClick={() => setPreview(true)}
               >
-                <Eye size={12} aria-hidden="true" />
-                Preview
+                <Eye size={14} aria-hidden="true" />
               </ActionButton>
             )}
             {!active && state.status !== "pending" && (
               <ActionButton
+                size="icon"
                 tooltip="Delete extracted frames"
                 ariaLabel="Delete frames"
                 className="text-red-700 hover:bg-red-50"
                 onClick={() => setConfirmDelete(true)}
               >
-                <Trash2 size={12} aria-hidden="true" />
+                <Trash2 size={14} aria-hidden="true" />
               </ActionButton>
             )}
           </div>

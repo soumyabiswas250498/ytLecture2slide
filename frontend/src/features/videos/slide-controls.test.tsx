@@ -119,7 +119,8 @@ it("retries failure and confirms deletion", async () => {
   expect(api.deleteSlides).toHaveBeenCalledWith(1);
 });
 
-it("shows expandable reconstruction and obstruction details without blocking", async () => {
+it("moves detailed slide statistics and warnings into DetailsPopover without inline expansion", async () => {
+  const user = userEvent.setup();
   vi.mocked(api.getSlideState).mockResolvedValue({
     ...state,
     status: "processed",
@@ -132,13 +133,35 @@ it("shows expandable reconstruction and obstruction details without blocking", a
     output_directory: "/slides",
   });
   render(<SlideControls videoId={1} />, { wrapper });
-  expect(await screen.findByText("In 5 · +2 · Dup 1 · Out 4")).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: /Details/i }));
+  expect(await screen.findByText("4 slides")).toBeVisible();
+  expect(screen.queryByText(/Details/i)).not.toBeInTheDocument();
+  expect(screen.queryByText("Input frames")).not.toBeInTheDocument();
+
+  const infoBtn = screen.getByRole("button", {
+    name: "View slide processing details",
+  });
+  expect(infoBtn).toHaveAttribute("title", "View details");
+  expect(infoBtn.className).toContain("h-8 w-8");
+
+  await user.click(infoBtn);
+  expect(await screen.findByText("Slide processing")).toBeVisible();
+  expect(screen.getByText("Input frames")).toBeVisible();
+  expect(screen.getByText("5")).toBeVisible();
+  expect(screen.getByText("Additional frames")).toBeVisible();
+  expect(screen.getByText("Confirmed duplicates excluded")).toBeVisible();
+  expect(screen.getByText("Output slides")).toBeVisible();
+  expect(screen.getByText("Reconstructed slides")).toBeVisible();
+  expect(screen.getByText("Potentially obstructed slides")).toBeVisible();
   expect(
     screen.getByText(
-      /Reconstructed: 2 · Potentially obstructed: 1 \(retained\)/,
+      /1 potentially obstructed slide retained for manual review\./,
     ),
   ).toBeVisible();
+
+  await user.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByText("Slide processing")).not.toBeInTheDocument(),
+  );
 });
 
 it("displays single large image when original and processed match, and supports keyboard/jump navigation", async () => {

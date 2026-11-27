@@ -394,7 +394,7 @@ export function PdfLibraryPage() {
           <DataTable>
             <thead>
               <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground uppercase">
-                <th className="w-8 px-2 py-2 text-left">
+                <th className="w-8 px-2 py-1.5 text-left">
                   <input
                     type="checkbox"
                     aria-label="Select all PDFs on page"
@@ -404,15 +404,21 @@ export function PdfLibraryPage() {
                     className="h-4 w-4 rounded border-border"
                   />
                 </th>
-                <th className="px-2 py-2 text-left font-semibold">
+                <th className="px-2 py-1.5 text-left font-semibold">
                   Video Title
                 </th>
-                <th className="px-2 py-2 text-left font-semibold">Channel</th>
-                <th className="px-2 py-2 text-left font-semibold">Published</th>
-                <th className="px-2 py-2 text-left font-semibold">Generated</th>
-                <th className="px-2 py-2 text-left font-semibold">Pages</th>
-                <th className="px-2 py-2 text-left font-semibold">Size</th>
-                <th className="px-2 py-2 text-right font-semibold">Actions</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Channel</th>
+                <th className="px-2 py-1.5 text-left font-semibold">
+                  Published
+                </th>
+                <th className="px-2 py-1.5 text-left font-semibold">
+                  Generated
+                </th>
+                <th className="px-2 py-1.5 text-left font-semibold">Pages</th>
+                <th className="px-2 py-1.5 text-left font-semibold">Size</th>
+                <th className="px-2 py-1.5 text-right font-semibold">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -421,7 +427,7 @@ export function PdfLibraryPage() {
                   key={item.video_id}
                   className="align-middle transition-colors hover:bg-muted/20"
                 >
-                  <td className="px-2 py-2">
+                  <td className="px-2 py-1.5">
                     <input
                       type="checkbox"
                       aria-label={`Select ${item.video_title}`}
@@ -430,7 +436,7 @@ export function PdfLibraryPage() {
                       className="h-4 w-4 rounded border-border"
                     />
                   </td>
-                  <td className="max-w-[320px] px-2 py-2">
+                  <td className="max-w-[320px] px-2 py-1.5">
                     <p className="line-clamp-2 text-xs font-medium leading-snug">
                       {item.video_title}
                     </p>
@@ -441,48 +447,49 @@ export function PdfLibraryPage() {
                       {item.pdf_filename}
                     </p>
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted-foreground">
                     {item.channel_name}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted-foreground">
                     {formatISTDate(item.published_at)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted-foreground">
                     {formatISTDate(item.generated_at)}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-xs tabular-nums">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs tabular-nums">
                     {item.page_count}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2 text-xs tabular-nums text-muted-foreground">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-xs tabular-nums text-muted-foreground">
                     {formatBytes(item.file_size_bytes)}
                   </td>
-                  <td className="px-2 py-2 text-right">
-                    <div className="inline-flex items-center justify-end gap-1">
+                  <td className="px-2 py-1.5 text-right">
+                    <div className="inline-flex flex-nowrap items-center justify-end gap-1">
                       <ActionButton
+                        size="icon"
                         tooltip="Preview PDF"
                         ariaLabel={`Preview ${item.video_title}`}
                         onClick={() => setPreviewTarget(item)}
                       >
-                        <Eye size={12} aria-hidden="true" />
-                        Preview
+                        <Eye size={14} aria-hidden="true" />
                       </ActionButton>
                       <a
                         href={pdfDownloadUrl(item.video_id)}
                         download={item.pdf_filename}
+                        title="Download PDF"
                         aria-label={`Download ${item.video_title}`}
-                        className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-white px-2 text-xs font-medium text-foreground hover:bg-muted"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-white text-foreground hover:bg-muted"
                       >
-                        <Download size={12} aria-hidden="true" />
-                        Download
+                        <Download size={14} aria-hidden="true" />
                       </a>
                       <ActionButton
+                        size="icon"
                         variant="ghost"
                         tooltip="Delete PDF"
                         ariaLabel={`Delete ${item.video_title}`}
                         className="text-red-700 hover:bg-red-50 hover:text-red-800"
                         onClick={() => setDeleteTarget(item)}
                       >
-                        <Trash2 size={12} aria-hidden="true" />
+                        <Trash2 size={14} aria-hidden="true" />
                       </ActionButton>
                     </div>
                   </td>

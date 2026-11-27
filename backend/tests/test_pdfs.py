@@ -245,7 +245,7 @@ def test_core_pdf_generator_lossless_chronology_metadata_and_footer(tmp_path: Pa
             youtube_video_id="abc123",
         ),
         out_pdf,
-        config=PdfConfig(min_free_disk_mb=0),
+        config=PdfConfig(compression="lossless", min_free_disk_mb=0),
         on_progress=lambda done, total: progress_calls.append((done, total)),
     )
 
@@ -297,7 +297,7 @@ def test_core_pdf_generator_arbitrary_local_paths_and_bengali_text(tmp_path: Pat
         [p1, p2],
         PdfDocumentMetadata(title="Local Collection", channel_name="Local"),
         out,
-        config=PdfConfig(min_free_disk_mb=0),
+        config=PdfConfig(compression="lossless", min_free_disk_mb=0),
     )
     assert res.page_count == 2
     assert validate_pdf_file(out, [(800, 450), (800, 450)])
@@ -316,7 +316,7 @@ def test_core_pdf_generator_errors_and_cancellation(tmp_path: Path) -> None:
             [PdfImageInput(image_path=missing, timestamp_seconds=0.0)],
             meta,
             tmp_path / "missing.pdf",
-            config=PdfConfig(min_free_disk_mb=0),
+            config=PdfConfig(compression="lossless", min_free_disk_mb=0),
         )
     assert not (tmp_path / "missing.pdf").exists()
 
@@ -327,7 +327,7 @@ def test_core_pdf_generator_errors_and_cancellation(tmp_path: Path) -> None:
             [PdfImageInput(image_path=corrupt, timestamp_seconds=0.0)],
             meta,
             tmp_path / "corrupt.pdf",
-            config=PdfConfig(min_free_disk_mb=0),
+            config=PdfConfig(compression="lossless", min_free_disk_mb=0),
         )
 
     valid = tmp_path / "ok.png"
@@ -339,7 +339,7 @@ def test_core_pdf_generator_errors_and_cancellation(tmp_path: Path) -> None:
             [PdfImageInput(image_path=valid, timestamp_seconds=0.0)],
             meta,
             tmp_path / "cancelled.pdf",
-            config=PdfConfig(min_free_disk_mb=0),
+            config=PdfConfig(compression="lossless", min_free_disk_mb=0),
             cancel=cancel,
         )
     assert not (tmp_path / "cancelled.pdf").exists()
@@ -580,33 +580,33 @@ def test_pdf_settings_persistence_and_regeneration_override(tmp_path: Path) -> N
         cv2.putText(arr, f"Slide {idx}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (20, 20, 20), 2)
         assert cv2.imwrite(str(slide_dir / f"slide_{idx:05d}.png"), arr)
     with TestClient(create_app(settings)) as client:
-        # Default is lossless
+        # Default is compact (JPEG 85)
         cfg_res = client.get("/api/v1/settings/pdf")
         assert cfg_res.status_code == 200
-        assert cfg_res.json()["compression"] == "lossless"
-        assert cfg_res.json()["default_compression"] == "lossless"
+        assert cfg_res.json()["compression"] == "compact"
+        assert cfg_res.json()["default_compression"] == "compact"
 
-        # Generate initial lossless PDF
+        # Generate initial compact PDF
         assert client.post(f"/api/v1/videos/{video_id}/pdf", json={}).status_code == 202
         for _ in range(100):
             s1 = client.get(f"/api/v1/videos/{video_id}/pdf").json()
             if s1["status"] == "generated":
                 break
             time.sleep(0.05)
-        assert s1["compression"] == "lossless"
-        lossless_size = s1["file_size_bytes"]
-        lossless_bytes = Path(s1["pdf_path"]).read_bytes()
+        assert s1["compression"] == "compact"
+        compact_size = s1["file_size_bytes"]
+        compact_bytes = Path(s1["pdf_path"]).read_bytes()
 
         # Change persistent setting to high_quality -> existing PDF must NOT change
         put_res = client.put("/api/v1/settings/pdf", json={"compression": "high_quality"})
         assert put_res.status_code == 200
         assert put_res.json()["compression"] == "high_quality"
-        assert Path(s1["pdf_path"]).read_bytes() == lossless_bytes
+        assert Path(s1["pdf_path"]).read_bytes() == compact_bytes
 
-        # Regenerate with explicit override compact
+        # Regenerate with explicit override lossless (retained for backward compatibility)
         regen = client.post(
             f"/api/v1/videos/{video_id}/pdf",
-            json={"regenerate": True, "configuration": {"compression": "compact"}},
+            json={"regenerate": True, "configuration": {"compression": "lossless"}},
         )
         assert regen.status_code == 202
         for _ in range(100):
@@ -614,8 +614,8 @@ def test_pdf_settings_persistence_and_regeneration_override(tmp_path: Path) -> N
             if s2["status"] == "generated":
                 break
             time.sleep(0.05)
-        assert s2["compression"] == "compact"
-        assert s2["file_size_bytes"] < lossless_size
+        assert s2["compression"] == "lossless"
+        assert s2["file_size_bytes"] > compact_size
 
     # Persistence across restart
     with TestClient(create_app(settings)) as client2:
@@ -745,3 +745,40 @@ def test_alembic_backfill_preserves_linked_and_leaves_unlinked_null(
         ).fetchall()
     assert rows[0] == (1, "TWS Academy", "UCxLjute2FI5blJvh0dSIstg")
     assert rows[1] == (2, None, None)
+
+
+def test_alembic_updates_persisted_lossless_setting_to_compact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+    import sqlite3
+
+    from alembic import command
+    from alembic.config import Config
+
+    db_path = tmp_path / "settings_mig.db"
+    monkeypatch.setenv("DATABASE_PATH", str(db_path))
+    alembic_cfg = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+
+    command.upgrade(alembic_cfg, "f6a7b8c9d0e1")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO app_settings (key, value_json, updated_at)
+            VALUES (
+                'pdf_generation_settings',
+                '{"compression": "lossless"}',
+                '2026-11-27T04:00:00+00:00'
+            )
+            """
+        )
+        conn.commit()
+
+    command.upgrade(alembic_cfg, "head")
+
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT value_json FROM app_settings WHERE key = 'pdf_generation_settings'"
+        ).fetchone()
+    assert row is not None
+    assert json.loads(row[0])["compression"] == "compact"

@@ -195,7 +195,9 @@ describe("ChannelsPage", () => {
 
     // Toggle status
     await user.click(screen.getByRole("button", { name: "Disable" }));
-    expect(await screen.findByText("Enable")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Enable" }),
+    ).toBeInTheDocument();
 
     // Edit channel
     await user.click(

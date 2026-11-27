@@ -35,6 +35,7 @@ export type DownloadStatus = z.infer<typeof DownloadStatus>;
 export const videoSchema = z.object({
   id: z.number(),
   channel_id: z.number().nullable(),
+  channel_name: z.string().nullable().optional(),
   youtube_video_id: z.string(),
   title: z.string(),
   description: z.string(),
