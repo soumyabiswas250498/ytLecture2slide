@@ -20,7 +20,12 @@ test("frontend connects to the real backend and navigation works", async ({
     page.getByRole("heading", { name: "Videos", level: 1 }),
   ).toBeVisible();
 
-  for (const name of ["Processing Jobs", "PDF Library"]) {
+  await page.getByRole("link", { name: "PDF Library", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "PDF Library", level: 1 }),
+  ).toBeVisible();
+
+  for (const name of ["Processing Jobs"]) {
     await page.getByRole("link", { name, exact: true }).click();
     await expect(
       page.getByRole("heading", { name: `${name} is not available yet` }),

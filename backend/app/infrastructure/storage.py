@@ -23,7 +23,7 @@ class Storage:
             videos=settings.download_dir,
             frames=settings.frame_dir or settings.temp_dir / "frames",
             slides=settings.temp_dir / "slides",
-            pdfs=settings.storage_dir / "pdfs",
+            pdfs=settings.pdf_dir or settings.storage_dir / "pdfs",
             logs=settings.storage_dir / "logs",
             database=settings.database_path.parent,
         )

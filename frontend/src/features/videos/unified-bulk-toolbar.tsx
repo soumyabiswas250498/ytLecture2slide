@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Download, Film, Layers } from "lucide-react";
+import { Download, FileText, Film, Layers } from "lucide-react";
 import { ActionButton } from "@/components/shared/action-button";
 import { BulkActionToolbar } from "@/components/shared/bulk-action-toolbar";
 import {
@@ -19,6 +19,11 @@ import {
   getExtractionConfig,
   type extractionSchema,
 } from "@/services/extractions";
+import {
+  generateSelectedPdfs,
+  getPdfState,
+  type PdfState,
+} from "@/services/pdfs";
 import {
   getSlideState,
   processSelected,
@@ -91,6 +96,14 @@ export function UnifiedBulkToolbar({
     })),
   });
 
+  const pdfQueries = useQueries({
+    queries: selectedIds.map((id) => ({
+      queryKey: ["pdf-generation", id],
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        getPdfState(id, signal),
+    })),
+  });
+
   const extractionById = useMemo(() => {
     const map = new Map<number, ExtractionState>();
     selectedIds.forEach((id, idx) => {
@@ -108,6 +121,15 @@ export function UnifiedBulkToolbar({
     });
     return map;
   }, [selectedIds, slideQueries]);
+
+  const pdfById = useMemo(() => {
+    const map = new Map<number, PdfState>();
+    selectedIds.forEach((id, idx) => {
+      const data = pdfQueries[idx]?.data;
+      if (data) map.set(id, data);
+    });
+    return map;
+  }, [selectedIds, pdfQueries]);
 
   const downloadEligibility = useMemo(() => {
     const eligible: Video[] = [];
@@ -200,6 +222,42 @@ export function UnifiedBulkToolbar({
     }
     return { eligible, excluded };
   }, [selectedVideos, extractionById, slideById]);
+
+  const pdfEligibility = useMemo(() => {
+    const eligible: Video[] = [];
+    const excluded: { title: string; reason: string }[] = [];
+    for (const v of selectedVideos) {
+      const slide = slideById.get(v.id);
+      const pdf = pdfById.get(v.id);
+      if (v.is_excluded) {
+        excluded.push({
+          title: v.title,
+          reason:
+            v.excluded_keywords.length > 0
+              ? `Excluded by keyword(s): ${v.excluded_keywords.join(", ")}`
+              : "Excluded by keyword",
+        });
+      } else if (slide?.status !== "processed" || !slide?.output_directory) {
+        excluded.push({
+          title: v.title,
+          reason: "Slides must be processed first",
+        });
+      } else if (pdf?.requested || pdf?.status === "generating") {
+        excluded.push({
+          title: v.title,
+          reason: "PDF generation already in progress",
+        });
+      } else if (pdf?.status === "generated" && pdf?.pdf_path) {
+        excluded.push({
+          title: v.title,
+          reason: "PDF already generated",
+        });
+      } else {
+        eligible.push(v);
+      }
+    }
+    return { eligible, excluded };
+  }, [selectedVideos, slideById, pdfById]);
 
   const buildBulkFeedback = (
     actionLabel: string,
@@ -306,12 +364,36 @@ export function UnifiedBulkToolbar({
     },
   });
 
+  const pdfMutation = useMutation({
+    mutationFn: (ids: number[]) => generateSelectedPdfs(ids),
+    onSuccess: (res) => {
+      setFeedback(
+        buildBulkFeedback(
+          "PDF generation",
+          res.started_ids.length,
+          pdfEligibility.excluded,
+          res.errors,
+        ),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["pdf-generation"] });
+      void queryClient.invalidateQueries({ queryKey: ["pdf-library"] });
+    },
+    onError: (err) => {
+      setFeedback({
+        tone: "error",
+        summary: `PDF generation failed: ${getErrorMessage(err)}`,
+        details: [],
+      });
+    },
+  });
+
   const intervalInvalid =
     interval !== undefined && (!Number.isFinite(interval) || interval < 0.001);
   const anyPending =
     downloadMutation.isPending ||
     extractionMutation.isPending ||
-    slideMutation.isPending;
+    slideMutation.isPending ||
+    pdfMutation.isPending;
 
   const downloadDisabled =
     downloadEligibility.eligible.length === 0 || anyPending;
@@ -320,6 +402,7 @@ export function UnifiedBulkToolbar({
     anyPending ||
     intervalInvalid;
   const slideDisabled = slideEligibility.eligible.length === 0 || anyPending;
+  const pdfDisabled = pdfEligibility.eligible.length === 0 || anyPending;
 
   return (
     <div className="space-y-2">
@@ -397,6 +480,30 @@ export function UnifiedBulkToolbar({
         >
           <Layers size={14} aria-hidden="true" />
           Process Slides ({slideEligibility.eligible.length})
+        </ActionButton>
+
+        <span className="text-xs text-muted-foreground" aria-hidden="true">
+          →
+        </span>
+
+        <ActionButton
+          variant="outline"
+          size="sm"
+          disabled={pdfDisabled}
+          tooltip={
+            selectedVideos.length === 0
+              ? "Select videos with processed slides to generate PDFs"
+              : pdfEligibility.eligible.length === 0
+                ? "No selected videos have processed slides ready for PDF generation"
+                : `Generate PDF for ${pluralizeVideos(pdfEligibility.eligible.length)}`
+          }
+          ariaLabel={`Generate PDF (${pdfEligibility.eligible.length})`}
+          onClick={() =>
+            pdfMutation.mutate(pdfEligibility.eligible.map((v) => v.id))
+          }
+        >
+          <FileText size={14} aria-hidden="true" />
+          Generate PDF ({pdfEligibility.eligible.length})
         </ActionButton>
 
         <label className="ml-1 flex items-center gap-1.5 text-xs text-muted-foreground">

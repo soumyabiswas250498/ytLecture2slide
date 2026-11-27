@@ -42,7 +42,7 @@ The application does not extract MCQs, perform OCR, transcribe audio or call an 
 
 ## Development status
 
-Phase 1 foundation, Phase 2 channel management, Phase 3 video discovery, and Phase 4 video acquisition are implemented and verified. Phase 5 frame extraction and Phase 6 smartboard processing are implemented and verified within the documented conservative limits; scheduling and PDF generation remain future work. See the [Phase 6 report](docs/PHASE6_REPORT.md) for visual examples, measurements and limitations. Future navigation sections explicitly state that they are unavailable. See [Phase 1 report](docs/PHASE1_REPORT.md), [Phase 2 report](docs/PHASE2_REPORT.md), [Phase 3 report](docs/PHASE3_REPORT.md), and [Phase 4 report](docs/PHASE4_REPORT.md) for verification evidence and limitations.
+Phase 1 foundation, Phase 2 channel management, Phase 3 video discovery, Phase 4 video acquisition, Phase 5 frame extraction, Phase 6 smartboard processing, and Phase 7 PDF generation & PDF Library (with configurable lossless/JPEG compression and channel metadata preservation) are implemented and verified. Daily scheduling and full pipeline orchestration (Phase 8+) remain future work. See the [Phase 7 report](docs/PHASE7_REPORT.md) and [Phase 6 report](docs/PHASE6_REPORT.md) for visual examples, measurements and limitations. Future navigation sections (`Processing Jobs`) explicitly state that they are unavailable. See [Phase 1 report](docs/PHASE1_REPORT.md), [Phase 2 report](docs/PHASE2_REPORT.md), [Phase 3 report](docs/PHASE3_REPORT.md), and [Phase 4 report](docs/PHASE4_REPORT.md) for verification evidence and limitations.
 
 ## Local setup
 
@@ -100,6 +100,13 @@ The backend and Vite load the root `.env`. Environment variables override file v
 | `DOWNLOAD_MAX_TOTAL_TIMEOUT_SECONDS` | Unset (`None`); optional overall per-download cap in seconds (30–86400); healthy progressing downloads are not terminated |
 | `DOWNLOAD_MIN_FREE_DISK_MB` | `500`; minimum free disk space required before starting a download |
 | `DOWNLOAD_DIR` | `<temp_dir>/videos` if omitted; destination directory for downloaded video files |
+| `PDF_DIR` | `<storage>/pdfs` if omitted; destination directory for generated PDFs (`/data/pdfs` in Compose) |
+| `PDF_CONCURRENT_LIMIT` | `1`; maximum concurrent PDF generation jobs (1–3) |
+| `PDF_RETRY_ATTEMPTS` | `3`; bounded retry attempts for transient PDF errors and startup recovery (0–10) |
+| `PDF_MIN_FREE_DISK_MB` | `500`; minimum free disk space required before PDF generation or ZIP bundling |
+| `PDF_ZIP_MAX_FILES` | `100`; maximum PDFs per bulk ZIP download (1–1000) |
+| `PDF_ZIP_MAX_TOTAL_BYTES` | `2147483648` (2 GiB); maximum combined PDF size per bulk ZIP download |
+| `PDF_GENERATION` | JSON overrides for `PdfConfig` (`orientation="landscape"`, `include_page_numbers=true`, `include_timestamps=true`, `footer_height_pt=28`) |
 | `FRONTEND_PORT` | Compose-only published loopback port, `8080` |
 
 When changing `STORAGE_DIR`, update explicit `TEMP_DIR` and `DATABASE_PATH` overrides too, or remove them to use derived defaults. Compose uses container paths under `/data` rather than host `.env` paths and fixes the internal backend port to 8000 for its proxy. Log level and timezone remain configurable.

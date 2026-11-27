@@ -9,6 +9,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from app.domain.exclusion import DEFAULT_SUGGESTED_KEYWORDS
+from app.domain.pdfs import (
+    COMPRESSION_MODE_DESCRIPTIONS,
+    PdfCompressionMode,
+    PdfConfig,
+)
+from app.repositories.settings import SettingsRepository
 from app.services.exclusion import VideoExclusionService
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
@@ -64,4 +70,83 @@ def update_exclusion_keywords(
         reevaluated_count=result.reevaluated_count,
         excluded_video_count=result.excluded_video_count,
         eligible_video_count=result.eligible_video_count,
+    )
+
+
+class PdfCompressionOption(BaseModel):
+    mode: PdfCompressionMode
+    label: str
+    description: str
+
+
+PDF_COMPRESSION_OPTIONS: list[PdfCompressionOption] = [
+    PdfCompressionOption(
+        mode="lossless",
+        label="Lossless (Original PNG)",
+        description=COMPRESSION_MODE_DESCRIPTIONS["lossless"],
+    ),
+    PdfCompressionOption(
+        mode="maximum_quality",
+        label="Maximum quality (JPEG 95)",
+        description=COMPRESSION_MODE_DESCRIPTIONS["maximum_quality"],
+    ),
+    PdfCompressionOption(
+        mode="high_quality",
+        label="High quality (JPEG 90)",
+        description=COMPRESSION_MODE_DESCRIPTIONS["high_quality"],
+    ),
+    PdfCompressionOption(
+        mode="compact",
+        label="Compact (JPEG 85)",
+        description=COMPRESSION_MODE_DESCRIPTIONS["compact"],
+    ),
+]
+
+
+class PdfSettingsResponse(BaseModel):
+    compression: PdfCompressionMode
+    default_compression: PdfCompressionMode
+    options: list[PdfCompressionOption]
+    updated_at: datetime | None = None
+
+
+class PdfSettingsUpdateRequest(BaseModel):
+    compression: PdfCompressionMode
+
+
+def _get_settings_repo(request: Request) -> SettingsRepository:
+    return SettingsRepository(request.app.state.sessions)
+
+
+SettingsRepoDep = Annotated[SettingsRepository, Depends(_get_settings_repo)]
+
+
+@router.get("/pdf", response_model=PdfSettingsResponse)
+def get_pdf_settings(
+    request: Request,
+    repo: SettingsRepoDep,
+) -> PdfSettingsResponse:
+    default_cfg: PdfConfig = request.app.state.settings.pdf_generation
+    cfg, updated_at = repo.get_pdf_settings(default_cfg)
+    return PdfSettingsResponse(
+        compression=cfg.compression,
+        default_compression=default_cfg.compression,
+        options=PDF_COMPRESSION_OPTIONS,
+        updated_at=updated_at,
+    )
+
+
+@router.put("/pdf", response_model=PdfSettingsResponse)
+def update_pdf_settings(
+    payload: PdfSettingsUpdateRequest,
+    request: Request,
+    repo: SettingsRepoDep,
+) -> PdfSettingsResponse:
+    default_cfg: PdfConfig = request.app.state.settings.pdf_generation
+    cfg, updated_at = repo.save_pdf_settings(payload.compression, default_cfg)
+    return PdfSettingsResponse(
+        compression=cfg.compression,
+        default_compression=default_cfg.compression,
+        options=PDF_COMPRESSION_OPTIONS,
+        updated_at=updated_at,
     )

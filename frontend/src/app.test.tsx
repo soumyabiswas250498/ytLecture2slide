@@ -76,6 +76,21 @@ beforeEach(() => {
           ),
         );
       }
+      if (url.includes("/pdfs")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              page_size: 20,
+              total_pages: 1,
+              total_bytes: 0,
+              total_pages_sum: 0,
+            }),
+          ),
+        );
+      }
       return Promise.resolve(new Response(JSON.stringify({ status: "ok" })));
     }),
   );
@@ -116,7 +131,16 @@ it("navigates to Channels and every future section without fabricated data", asy
     "page",
   );
 
-  for (const name of ["Processing Jobs", "PDF Library"]) {
+  await user.click(screen.getByRole("link", { name: "PDF Library" }));
+  expect(
+    await screen.findByRole("heading", { name: "PDF Library", level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "PDF Library" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+
+  for (const name of ["Processing Jobs"]) {
     await user.click(screen.getByRole("link", { name }));
     expect(
       screen.getByRole("heading", { name: `${name} is not available yet` }),

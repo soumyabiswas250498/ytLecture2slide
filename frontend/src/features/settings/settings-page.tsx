@@ -6,10 +6,14 @@ import { PageContainer } from "@/components/shared/page-container";
 import { PageHeader } from "@/components/shared/page-header";
 import { ErrorState, LoadingState } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { ApiError } from "@/services/api";
+import type { PdfCompressionMode } from "@/services/pdfs";
 import {
   getExclusionKeywords,
+  getPdfSettings,
   updateExclusionKeywords,
+  updatePdfSettings,
 } from "@/services/settings";
 
 function normalizeKeyword(raw: string): string {
@@ -32,14 +36,50 @@ export function SettingsPage() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [draftCompression, setDraftCompression] =
+    useState<PdfCompressionMode | null>(null);
+  const [pdfFeedback, setPdfFeedback] = useState<{
+    type: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const query = useQuery({
     queryKey: ["settings", "exclusion-keywords"],
     queryFn: ({ signal }) => getExclusionKeywords(signal),
   });
 
+  const pdfQuery = useQuery({
+    queryKey: ["settings", "pdf"],
+    queryFn: ({ signal }) => getPdfSettings(signal),
+  });
+
   const dirty = draftKeywords !== null;
   const keywords = draftKeywords ?? query.data?.keywords ?? [];
+  const activeCompression: PdfCompressionMode =
+    draftCompression ?? pdfQuery.data?.compression ?? "lossless";
+  const pdfDirty =
+    draftCompression !== null &&
+    draftCompression !== pdfQuery.data?.compression;
+
+  const savePdfMutation = useMutation({
+    mutationFn: (compression: PdfCompressionMode) =>
+      updatePdfSettings(compression),
+    onSuccess: async (res) => {
+      setDraftCompression(null);
+      const selectedLabel =
+        res.options.find((opt) => opt.mode === res.compression)?.label ??
+        res.compression;
+      setPdfFeedback({
+        type: "success",
+        message: `Saved PDF compression mode: ${selectedLabel}. Applies to future generations only.`,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["settings", "pdf"] });
+      await queryClient.invalidateQueries({ queryKey: ["pdf-config"] });
+    },
+    onError: (err) => {
+      setPdfFeedback({ type: "error", message: getErrorMessage(err) });
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: (nextKeywords: string[]) =>
@@ -315,6 +355,94 @@ export function SettingsPage() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {pdfQuery.data && (
+        <section
+          aria-labelledby="pdf-generation-heading"
+          className="mt-5 rounded-xl border border-border bg-white p-5 shadow-xs"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-3">
+            <div>
+              <h2
+                id="pdf-generation-heading"
+                className="text-base font-semibold"
+              >
+                PDF Generation
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Default image compression for newly generated PDFs. Existing
+                PDFs are never modified automatically.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!pdfDirty || savePdfMutation.isPending}
+              onClick={() => savePdfMutation.mutate(activeCompression)}
+            >
+              <Save size={14} aria-hidden="true" />
+              {savePdfMutation.isPending ? "Saving…" : "Save PDF settings"}
+            </Button>
+          </div>
+
+          {pdfFeedback && (
+            <div className="mt-3">
+              <NotificationAlert
+                tone={pdfFeedback.type}
+                summary={pdfFeedback.message}
+                onDismiss={() => setPdfFeedback(null)}
+              />
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label
+              htmlFor="pdf-compression-select"
+              className="text-xs font-medium text-foreground"
+            >
+              Compression mode
+            </label>
+            <Select
+              id="pdf-compression-select"
+              ariaLabel="PDF compression mode"
+              value={activeCompression}
+              options={
+                pdfQuery.data.options.map((opt) => ({
+                  value: opt.mode,
+                  label: opt.label,
+                })) as readonly SelectOption<PdfCompressionMode>[]
+              }
+              onValueChange={(next) => {
+                setPdfFeedback(null);
+                setDraftCompression(next);
+              }}
+              className="min-w-[230px]"
+            />
+            <span className="text-xs text-muted-foreground">
+              Default:{" "}
+              {pdfQuery.data.options.find(
+                (opt) => opt.mode === pdfQuery.data?.default_compression,
+              )?.label ?? pdfQuery.data.default_compression}
+            </span>
+          </div>
+
+          <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+            {pdfQuery.data.options.map((opt) => (
+              <li
+                key={opt.mode}
+                className={
+                  opt.mode === activeCompression
+                    ? "font-medium text-foreground"
+                    : undefined
+                }
+              >
+                <span className="font-medium">{opt.label}:</span>{" "}
+                {opt.description}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
     </PageContainer>

@@ -19,7 +19,7 @@ from app.domain.videos import (
     VideoPage,
     VideoSummary,
 )
-from app.infrastructure.models import VideoRecord, utc_now
+from app.infrastructure.models import ChannelRecord, VideoRecord, utc_now
 
 
 def _ensure_utc(value: datetime) -> datetime:
@@ -73,6 +73,8 @@ def _to_entity(record: VideoRecord) -> VideoEntity:
         download_error=record.download_error,
         created_at=_ensure_utc(record.created_at),
         updated_at=_ensure_utc(record.updated_at),
+        channel_name=record.channel_name,
+        youtube_channel_id=record.youtube_channel_id,
         is_excluded=record.is_excluded,
         excluded_keywords=_parse_excluded_keywords(record.matched_exclusion_keywords),
     )
@@ -101,6 +103,8 @@ class VideoRepository:
         published_at: datetime,
         livestream_status: LivestreamStatus,
         discovered_at: datetime,
+        channel_name: str | None = None,
+        youtube_channel_id: str | None = None,
         is_excluded: bool = False,
         excluded_keywords: list[str] | None = None,
     ) -> tuple[VideoEntity, bool]:
@@ -117,8 +121,22 @@ class VideoRepository:
             if existing is not None:
                 return _to_entity(existing), False
 
+            resolved_channel_name = channel_name
+            resolved_yt_channel_id = youtube_channel_id
+            if channel_id is not None and (
+                resolved_channel_name is None or resolved_yt_channel_id is None
+            ):
+                ch = session.get(ChannelRecord, channel_id)
+                if ch is not None:
+                    if resolved_channel_name is None:
+                        resolved_channel_name = ch.name
+                    if resolved_yt_channel_id is None:
+                        resolved_yt_channel_id = ch.youtube_channel_id
+
             record = VideoRecord(
                 channel_id=channel_id,
+                channel_name=resolved_channel_name,
+                youtube_channel_id=resolved_yt_channel_id,
                 youtube_video_id=youtube_video_id,
                 title=title,
                 description=description,

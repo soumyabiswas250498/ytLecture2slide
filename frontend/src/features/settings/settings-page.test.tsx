@@ -42,6 +42,64 @@ describe("SettingsPage", () => {
       excluded_video_count: 1,
       eligible_video_count: 3,
     });
+    vi.mocked(settingsApi.getPdfSettings).mockResolvedValue({
+      compression: "lossless",
+      default_compression: "lossless",
+      options: [
+        {
+          mode: "lossless",
+          label: "Lossless (Original PNG)",
+          description:
+            "Original PNG — zero compression artifacts, largest file size.",
+        },
+        {
+          mode: "maximum_quality",
+          label: "Maximum quality (JPEG 95)",
+          description: "JPEG quality 95 — near-lossless visual fidelity.",
+        },
+        {
+          mode: "high_quality",
+          label: "High quality (JPEG 90)",
+          description: "JPEG quality 90 — crisp text and annotations.",
+        },
+        {
+          mode: "compact",
+          label: "Compact (JPEG 85)",
+          description: "JPEG quality 85 — smallest file size.",
+        },
+      ],
+      updated_at: null,
+    });
+    vi.mocked(settingsApi.updatePdfSettings).mockImplementation(
+      async (compression) => ({
+        compression,
+        default_compression: "lossless",
+        options: [
+          {
+            mode: "lossless",
+            label: "Lossless (Original PNG)",
+            description:
+              "Original PNG — zero compression artifacts, largest file size.",
+          },
+          {
+            mode: "maximum_quality",
+            label: "Maximum quality (JPEG 95)",
+            description: "JPEG quality 95 — near-lossless visual fidelity.",
+          },
+          {
+            mode: "high_quality",
+            label: "High quality (JPEG 90)",
+            description: "JPEG quality 90 — crisp text and annotations.",
+          },
+          {
+            mode: "compact",
+            label: "Compact (JPEG 85)",
+            description: "JPEG quality 85 — smallest file size.",
+          },
+        ],
+        updated_at: "2026-11-27T07:00:00Z",
+      }),
+    );
     vi.mocked(settingsApi.updateExclusionKeywords).mockImplementation(
       async (keywords) => ({
         keywords,
@@ -118,6 +176,34 @@ describe("SettingsPage", () => {
     );
     expect(
       await screen.findByText(/Saved 3 exclusion keywords/i),
+    ).toBeInTheDocument();
+  });
+
+  it("renders PDF Generation compression settings and saves selection", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />, { wrapper });
+
+    expect(await screen.findByText("PDF Generation")).toBeInTheDocument();
+    expect(screen.getByText(/Default: Lossless/i)).toBeInTheDocument();
+
+    const trigger = screen.getByRole("combobox", {
+      name: /PDF compression mode/i,
+    });
+    await user.click(trigger);
+    await user.click(
+      screen.getByRole("option", { name: "High quality (JPEG 90)" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Save PDF settings/i }),
+    );
+
+    await waitFor(() => {
+      expect(settingsApi.updatePdfSettings).toHaveBeenCalledWith(
+        "high_quality",
+      );
+    });
+    expect(
+      await screen.findByText(/Saved PDF compression mode: High quality/i),
     ).toBeInTheDocument();
   });
 });

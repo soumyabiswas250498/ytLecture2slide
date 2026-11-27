@@ -46,6 +46,8 @@ Status: Phase 1, Phase 2, Phase 3, and Phase 4 verified; final verification reco
 
 ## Phase 7 — PDF generation and library
 
+- Status: **Verified (2026-11-27)**. Backend 259 tests passed (1 opt-in real-data skipped), Ruff lint/format, strict mypy (77 files), Alembic `e5f6a7b8c9d0` upgrade/check, frontend 55 Vitest tests (11 files), ESLint/Prettier/`tsc -b`/Vite build, 14 local and 14 Docker Playwright E2E tests, real-world PDF generation (`vqYNwaqFPJM`, 77 pages, 92,008,735 bytes, lossless 1280×720), exclusion enforcement (`PbdheRRcLLg`, 409), individual/ZIP downloads, and Docker container recreation persistence passed. See docs/PHASE7_REPORT.md. Phase 8 remains not started.
+
 - Scope: reusable image-to-PDF module with source timestamps, one retained image per page, lossless encoding, integrity checks and atomic publication; PDF library preview, filters and individual/bulk ZIP downloads.
 - Acceptance: verify page count, image fidelity, chronology, safe paths, valid ZIP contents and failure behavior. Never delete temporary source files before validated output; preserve user-owned local originals.
 

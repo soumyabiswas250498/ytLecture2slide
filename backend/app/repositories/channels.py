@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from math import ceil
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -13,7 +13,7 @@ from app.domain.channels import (
     ChannelSummary,
     DuplicateChannelError,
 )
-from app.infrastructure.models import ChannelRecord, utc_now
+from app.infrastructure.models import ChannelRecord, VideoRecord, utc_now
 
 
 def _ensure_utc(value: datetime) -> datetime:
@@ -223,6 +223,17 @@ class ChannelRepository:
                 record.is_active = is_active
             record.updated_at = utc_now()
             try:
+                if name is not None or update_youtube_channel_id:
+                    video_updates: dict[str, str | None] = {}
+                    if name is not None:
+                        video_updates["channel_name"] = record.name
+                    if update_youtube_channel_id:
+                        video_updates["youtube_channel_id"] = record.youtube_channel_id
+                    session.execute(
+                        update(VideoRecord)
+                        .where(VideoRecord.channel_id == channel_id)
+                        .values(**video_updates)
+                    )
                 session.commit()
                 session.refresh(record)
             except IntegrityError as exc:
@@ -237,6 +248,14 @@ class ChannelRepository:
             record = session.get(ChannelRecord, channel_id)
             if record is None:
                 raise ChannelNotFoundError("Channel not found.")
+            session.execute(
+                update(VideoRecord)
+                .where(VideoRecord.channel_id == channel_id)
+                .values(
+                    channel_name=record.name,
+                    youtube_channel_id=record.youtube_channel_id,
+                )
+            )
             session.delete(record)
             session.commit()
 

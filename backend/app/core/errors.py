@@ -22,6 +22,7 @@ from app.domain.downloads import (
 )
 from app.domain.exclusion import VideoExcludedError
 from app.domain.extraction import ExtractionConflict, ExtractionError
+from app.domain.pdfs import PdfConflict, PdfError, PdfNotFoundError
 from app.domain.videos import (
     DiscoveryAlreadyRunningError,
     QuotaExhaustedError,
@@ -54,6 +55,18 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ExtractionError)
     async def extraction_error(request: Request, exc: ExtractionError) -> JSONResponse:
         return error_response(422, "extraction_error", str(exc))
+
+    @app.exception_handler(PdfConflict)
+    async def pdf_conflict(request: Request, exc: PdfConflict) -> JSONResponse:
+        return error_response(409, "pdf_conflict", str(exc))
+
+    @app.exception_handler(PdfNotFoundError)
+    async def pdf_not_found(request: Request, exc: PdfNotFoundError) -> JSONResponse:
+        return error_response(404, "pdf_not_found", str(exc))
+
+    @app.exception_handler(PdfError)
+    async def pdf_error(request: Request, exc: PdfError) -> JSONResponse:
+        return error_response(422, "pdf_error", str(exc))
 
     @app.exception_handler(ChannelNotFoundError)
     async def channel_not_found(request: Request, exc: ChannelNotFoundError) -> JSONResponse:

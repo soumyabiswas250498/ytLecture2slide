@@ -395,6 +395,8 @@ class DiscoveryService:
 
         _, created = self._video_repo.create_or_skip(
             channel_id=channel.id,
+            channel_name=channel.name,
+            youtube_channel_id=channel.youtube_channel_id,
             youtube_video_id=youtube_video_id,
             title=title,
             description=description,

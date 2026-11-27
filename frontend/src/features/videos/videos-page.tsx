@@ -48,6 +48,7 @@ import {
   type Video,
 } from "@/services/videos";
 import { ExtractionControls } from "./extraction-controls";
+import { PdfControls } from "./pdf-controls";
 import { SlideControls } from "./slide-controls";
 import { UnifiedBulkToolbar } from "./unified-bulk-toolbar";
 
@@ -680,6 +681,7 @@ export function VideosPage() {
                 <th className="px-2 py-2 text-left font-semibold">Download</th>
                 <th className="px-2 py-2 text-left font-semibold">Frames</th>
                 <th className="px-2 py-2 text-left font-semibold">Slides</th>
+                <th className="px-2 py-2 text-left font-semibold">PDF</th>
                 <th className="px-2 py-2 text-right font-semibold">Actions</th>
               </tr>
             </thead>
@@ -831,6 +833,13 @@ export function VideosPage() {
                     <td className="px-2 py-2">
                       <SlideControls
                         videoId={video.id}
+                        isExcluded={video.is_excluded}
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <PdfControls
+                        videoId={video.id}
+                        videoTitle={video.title}
                         isExcluded={video.is_excluded}
                       />
                     </td>

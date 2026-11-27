@@ -8,9 +8,11 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.exclusion import ExclusionSettings
+from app.domain.pdfs import PdfCompressionMode, PdfConfig
 from app.infrastructure.models import AppSettingRecord, utc_now
 
 EXCLUSION_KEYWORDS_KEY = "video_exclusion_keywords"
+PDF_GENERATION_SETTINGS_KEY = "pdf_generation_settings"
 
 
 def _ensure_utc(value: datetime | None) -> datetime | None:
@@ -61,3 +63,48 @@ class SettingsRepository:
                 keywords=list(keywords),
                 updated_at=_ensure_utc(record.updated_at),
             )
+
+    def get_pdf_settings(
+        self, default_config: PdfConfig | None = None
+    ) -> tuple[PdfConfig, datetime | None]:
+        base = default_config if default_config is not None else PdfConfig()
+        with self._sessions() as session:
+            record = session.get(AppSettingRecord, PDF_GENERATION_SETTINGS_KEY)
+            if record is None:
+                return base, None
+            try:
+                parsed = json.loads(record.value_json)
+            except json.JSONDecodeError:
+                return base, _ensure_utc(record.updated_at)
+            if not isinstance(parsed, dict):
+                return base, _ensure_utc(record.updated_at)
+            merged = base.model_dump()
+            merged.update(parsed)
+            try:
+                return PdfConfig.model_validate(merged), _ensure_utc(record.updated_at)
+            except Exception:
+                return base, _ensure_utc(record.updated_at)
+
+    def save_pdf_settings(
+        self, compression: PdfCompressionMode, default_config: PdfConfig | None = None
+    ) -> tuple[PdfConfig, datetime]:
+        now = utc_now()
+        base = default_config if default_config is not None else PdfConfig()
+        config = base.model_copy(update={"compression": compression})
+        payload = json.dumps({"compression": config.compression}, ensure_ascii=False)
+        with self._sessions() as session:
+            record = session.get(AppSettingRecord, PDF_GENERATION_SETTINGS_KEY)
+            if record is None:
+                record = AppSettingRecord(
+                    key=PDF_GENERATION_SETTINGS_KEY,
+                    value_json=payload,
+                    updated_at=now,
+                )
+                session.add(record)
+            else:
+                record.value_json = payload
+                record.updated_at = now
+            session.commit()
+            session.refresh(record)
+            updated = _ensure_utc(record.updated_at) or now
+            return config, updated

@@ -6,6 +6,7 @@ import re
 import shutil
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
@@ -44,10 +45,12 @@ class SlideService:
         settings: Settings,
         media_lock: threading.RLock,
         board_profiles: ChannelBoardProfileRepository | None = None,
+        pdf_guard: Callable[[int], None] | None = None,
     ) -> None:
         self.videos = videos
         self.repository = repository
         self.board_profiles = board_profiles
+        self.pdf_guard = pdf_guard
         self.extraction = extraction
         self.processor = processor
         self.settings = settings
@@ -98,6 +101,8 @@ class SlideService:
                     video.excluded_keywords,
                 )
             self.assert_inactive(video_id)
+            if self.pdf_guard is not None:
+                self.pdf_guard(video_id)
             self.extraction.assert_inactive(video_id)
             directory = self.extraction.directory(video_id)
             inputs = read_manifest(directory)
@@ -229,6 +234,8 @@ class SlideService:
         with self.lock:
             self.state(video_id)
             self.assert_inactive(video_id)
+            if self.pdf_guard is not None:
+                self.pdf_guard(video_id)
             directory = self._directory(video_id)
             if directory.exists():
                 # Refuse symlink ancestors using the existing no-follow directory utility.

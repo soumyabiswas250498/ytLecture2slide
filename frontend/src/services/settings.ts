@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { apiGet, apiPut } from "@/services/api";
+import {
+  pdfCompressionModeSchema,
+  type PdfCompressionMode,
+} from "@/services/pdfs";
 
 export const exclusionKeywordsSchema = z.object({
   keywords: z.array(z.string()),
@@ -26,4 +30,31 @@ export function updateExclusionKeywords(
     { keywords },
     exclusionKeywordsSchema,
   );
+}
+
+export const pdfCompressionOptionSchema = z.object({
+  mode: pdfCompressionModeSchema,
+  label: z.string(),
+  description: z.string(),
+});
+
+export const pdfSettingsSchema = z.object({
+  compression: pdfCompressionModeSchema,
+  default_compression: pdfCompressionModeSchema,
+  options: z.array(pdfCompressionOptionSchema),
+  updated_at: z.string().nullable().optional(),
+});
+
+export type PdfSettingsResponse = z.infer<typeof pdfSettingsSchema>;
+
+export function getPdfSettings(
+  signal?: AbortSignal,
+): Promise<PdfSettingsResponse> {
+  return apiGet("settings/pdf", pdfSettingsSchema, signal);
+}
+
+export function updatePdfSettings(
+  compression: PdfCompressionMode,
+): Promise<PdfSettingsResponse> {
+  return apiPut("settings/pdf", { compression }, pdfSettingsSchema);
 }

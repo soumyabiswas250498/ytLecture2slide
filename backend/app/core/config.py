@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.domain.pdfs import PdfConfig
 from app.domain.slides import SlideConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -57,6 +58,14 @@ class Settings(BaseSettings):
     slide_channel_profiles: dict[str, SlideConfig] = Field(default_factory=dict)
     slide_concurrent_limit: int = Field(default=1, ge=1, le=3)
     slide_retry_attempts: int = Field(default=3, ge=0, le=10)
+
+    pdf_dir: Path | None = None
+    pdf_concurrent_limit: int = Field(default=1, ge=1, le=3)
+    pdf_retry_attempts: int = Field(default=3, ge=0, le=10)
+    pdf_min_free_disk_mb: int = Field(default=500, ge=0)
+    pdf_zip_max_files: int = Field(default=100, ge=1, le=1000)
+    pdf_zip_max_total_bytes: int = Field(default=2 * 1024 * 1024 * 1024, ge=1024 * 1024)
+    pdf_generation: PdfConfig = Field(default_factory=PdfConfig)
 
     def __repr__(self) -> str:
         """Mask youtube_api_key to prevent accidental log exposure."""
@@ -118,6 +127,7 @@ class Settings(BaseSettings):
         )
         self.download_dir = self.absolute(self.download_dir or self.temp_dir / "videos")
         self.frame_dir = self.absolute(self.frame_dir or self.temp_dir / "frames")
+        self.pdf_dir = self.absolute(self.pdf_dir or self.storage_dir / "pdfs")
         return self
 
     @staticmethod

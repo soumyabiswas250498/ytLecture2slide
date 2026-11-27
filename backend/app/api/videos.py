@@ -79,6 +79,8 @@ class VideoResponse(BaseModel):
 
     id: int
     channel_id: int | None
+    channel_name: str | None = None
+    youtube_channel_id: str | None = None
     youtube_video_id: str
     title: str
     description: str
@@ -112,6 +114,8 @@ class VideoResponse(BaseModel):
         return cls(
             id=entity.id,
             channel_id=entity.channel_id,
+            channel_name=entity.channel_name,
+            youtube_channel_id=entity.youtube_channel_id,
             youtube_video_id=entity.youtube_video_id,
             title=entity.title,
             description=entity.description,

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.channels import router as channels_router
 from app.api.extractions import router as extraction_router
 from app.api.health import router as health_router
+from app.api.pdfs import router as pdfs_router
 from app.api.settings import router as settings_router
 from app.api.slides import router as slides_router
 from app.api.videos import discovery_router, videos_router
@@ -18,9 +19,12 @@ from app.core.logging import configure_logging
 from app.infrastructure.database import check_database, create_database_engine, session_factory
 from app.infrastructure.frame_extractor import FFmpegFrameExtractor
 from app.infrastructure.media_probe import FFprobeValidator
+from app.infrastructure.pdf_generator import PyMuPdfGenerator
 from app.infrastructure.storage import Storage
 from app.infrastructure.ytdlp_downloader import YtDlpVideoDownloader
+from app.repositories.channels import ChannelRepository
 from app.repositories.extractions import ExtractionRepository
+from app.repositories.pdfs import PdfRepository
 from app.repositories.settings import SettingsRepository
 from app.repositories.slides import ChannelBoardProfileRepository, SlideRepository
 from app.repositories.videos import VideoRepository
@@ -28,6 +32,7 @@ from app.services.downloader import VideoDownloadService
 from app.services.exclusion import VideoExclusionService
 from app.services.extraction import ExtractionService
 from app.services.imaging.pipeline import SlideProcessor
+from app.services.pdfs import PdfService
 from app.services.slides import SlideService
 
 
@@ -89,6 +94,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             extraction_service.delete_guard = slide_service.assert_no_published_slides
             slide_service.recover()
 
+            pdf_service = PdfService(
+                videos=VideoRepository(sessions),
+                channels=ChannelRepository(sessions),
+                repository=PdfRepository(sessions),
+                slides=slide_service,
+                generator=PyMuPdfGenerator(),
+                settings=config,
+                media_lock=media_lock,
+                settings_repo=SettingsRepository(sessions),
+            )
+            app.state.pdf_service = pdf_service
+            slide_service.pdf_guard = pdf_service.assert_inactive
+            pdf_service.recover()
+
             def media_guard(video_id: int) -> None:
                 extraction_service.assert_inactive(video_id)
                 slide_service.assert_inactive(video_id)
@@ -108,6 +127,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logging.getLogger("app").info("Application started")
             yield
         finally:
+            if hasattr(app.state, "pdf_service"):
+                app.state.pdf_service.shutdown()
             if hasattr(app.state, "slide_service"):
                 app.state.slide_service.shutdown()
             if hasattr(app.state, "extraction_service"):
@@ -127,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type"],
     )
     register_error_handlers(app)
+    app.include_router(pdfs_router)
     app.include_router(slides_router)
     app.include_router(extraction_router)
     app.include_router(health_router)

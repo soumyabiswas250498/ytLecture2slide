@@ -62,6 +62,8 @@ class VideoRecord(Base):
         ForeignKey("channels.id", ondelete="SET NULL"),
         nullable=True,
     )
+    channel_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    youtube_channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     youtube_video_id: Mapped[str] = mapped_column(String(32), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -163,6 +165,37 @@ class AppSettingRecord(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class PdfGenerationRecord(Base):
+    __tablename__ = "pdf_generations"
+    __table_args__ = (
+        Index("ix_pdf_generations_status", "status"),
+        Index("ix_pdf_generations_completed_at", "completed_at"),
+    )
+
+    video_id: Mapped[int] = mapped_column(ForeignKey("videos.id"), primary_key=True)
+    source_slide_generation: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    completed_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_pages: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pdf_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    pdf_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    page_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    configuration: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
