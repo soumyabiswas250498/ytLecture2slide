@@ -1,0 +1,80 @@
+name: Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.1"
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv run alembic upgrade head && uv run alembic check
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+  integration:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.1"
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: uv sync --frozen --project backend
+      - run: npm ci --prefix frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - run: docker compose config --quiet
+      - run: docker compose up --build --wait
+      - run: curl --fail http://127.0.0.1:8080/api/v1/ready
+      - run: docker compose exec -T backend ffmpeg -version && docker compose exec -T backend ffprobe -version
+      - name: Verify non-root Docker JavaScript runtime and EJS solver
+        run: |
+          docker compose exec -T backend python -c "import os, subprocess, importlib.metadata as m; assert os.getuid() != 0; assert m.version('yt-dlp-ejs') == '0.8.0'; subprocess.run(['deno', 'eval', 'if (1 + 1 !== 2) throw Error(\"runtime failed\")'], check=True)"
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8080
+      - name: Verify persistent storage
+        run: |
+          docker compose exec -T backend python -c "from pathlib import Path; import sqlite3; Path('/data/pdfs/.ci-probe').write_text('retained'); Path('/data/jobs/slides/.ci-probe').write_text('retained'); c=sqlite3.connect('/data/database/app.db'); c.execute('PRAGMA user_version=101'); c.close()"
+          docker compose up --force-recreate --wait
+          docker compose exec -T backend python -c "from pathlib import Path; import sqlite3; p=Path('/data/pdfs/.ci-probe'); assert p.read_text()=='retained'; q=Path('/data/jobs/slides/.ci-probe'); assert q.read_text()=='retained'; q.unlink(); c=sqlite3.connect('/data/database/app.db'); assert c.execute('PRAGMA user_version').fetchone()[0]==101; c.execute('PRAGMA user_version=0'); c.close(); p.unlink()"
+      - if: always()
+        run: docker compose down

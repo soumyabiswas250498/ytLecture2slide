@@ -1,0 +1,19 @@
+{
+  "video_provider_id": "vqYNwaqFPJM",
+  "primary_count": 87,
+  "reference_method": "Manual visual inspection of the complete contact sheet and selected full-resolution primary/additional frames; no OCR or automatic semantic labels",
+  "examples": [
+    {"timestamps": [0, 180, 240], "kind": "same_question_teacher_movement", "observation": "Question 1 remains; teacher changes from center to left to right. Primary captures retained separately."},
+    {"timestamps": [180, 185, 190, 195, 200], "kind": "partial_obstruction_recovery", "observation": "Options A/C obstructed at 180; visibly available in additional observations around 190/195. Partial fusion improves readability, with residual artifacts."},
+    {"timestamps": [0, 360], "kind": "substantial_obstruction", "observation": "Teacher obscures central/lower options. Visibility is insufficient for certified complete recovery; originals retained."},
+    {"timestamps": [660, 720, 780, 840], "kind": "annotation_and_answer", "observation": "Same jute mill question; underlining, tick at C and later annotations differ. All four primary states retained."},
+    {"timestamps": [1200, 1260, 1320], "kind": "handwriting", "observation": "Question 5 gains substantial yellow writing. Preserve primary variants."},
+    {"timestamps": [1920, 1980, 2040, 2100], "kind": "handwriting", "observation": "Currency printing question gains handwritten markings, diagrams and answer emphasis. Preserve variants."},
+    {"timestamps": [2460, 2580], "kind": "similar_template_distinct_question", "observation": "Steel plant and petrochemical production questions share a dark map template. Both retained."},
+    {"timestamps": [3180, 3240, 3300], "kind": "new_answer_markings", "observation": "Same newspaper question with later answer handwriting. All retained."},
+    {"timestamps": [3900, 3960], "kind": "answer_reveal_layout_change", "observation": "Question presentation changes to a marked correct-answer panel. Both retained."},
+    {"timestamps": [0, 5, 10, 60], "kind": "transition", "observation": "First question transitions to promotional artwork before next primary sample. Samples at/after 10 rejected for the first question's reconstruction."},
+    {"timestamps": [5100, 5160], "kind": "redundant_outro", "observation": "Same teacher-free thanks/subscribe artwork with compression differences; 5160 excluded as redundant."}
+  ],
+  "coverage_limit": "These references do not establish every question displayed in the full video. Entire slides may occur between 60-second primary samples."
+}
