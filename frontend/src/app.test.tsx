@@ -62,6 +62,20 @@ beforeEach(() => {
           ),
         );
       }
+      if (url.includes("/settings/exclusion-keywords")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              keywords: [],
+              suggested_keywords: ["Math", "Mathematics", "Reasoning"],
+              updated_at: null,
+              reevaluated_count: 0,
+              excluded_video_count: 0,
+              eligible_video_count: 0,
+            }),
+          ),
+        );
+      }
       return Promise.resolve(new Response(JSON.stringify({ status: "ok" })));
     }),
   );
@@ -102,7 +116,7 @@ it("navigates to Channels and every future section without fabricated data", asy
     "page",
   );
 
-  for (const name of ["Processing Jobs", "PDF Library", "Settings"]) {
+  for (const name of ["Processing Jobs", "PDF Library"]) {
     await user.click(screen.getByRole("link", { name }));
     expect(
       screen.getByRole("heading", { name: `${name} is not available yet` }),
@@ -112,6 +126,42 @@ it("navigates to Channels and every future section without fabricated data", asy
       "page",
     );
   }
+
+  await user.click(screen.getByRole("link", { name: "Settings" }));
+  expect(
+    await screen.findByRole("heading", { name: "Settings", level: 1 }),
+  ).toBeInTheDocument();
+  expect(
+    await screen.findByRole("heading", { name: "Exclude Keywords" }),
+  ).toBeInTheDocument();
+});
+
+it("collapses and expands the sidebar and persists preference in localStorage", async () => {
+  window.localStorage.removeItem("ytl2s.sidebar.collapsed");
+  const user = userEvent.setup();
+  const { unmount } = renderApp();
+
+  expect(screen.getByText("Local by design")).toBeInTheDocument();
+  const collapseBtn = screen.getByRole("button", { name: "Collapse sidebar" });
+  await user.click(collapseBtn);
+
+  expect(window.localStorage.getItem("ytl2s.sidebar.collapsed")).toBe("true");
+  expect(screen.queryByText("Local by design")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Expand sidebar" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Videos" })).toHaveAttribute(
+    "title",
+    "Videos",
+  );
+
+  // Remounting preserves collapsed preference
+  unmount();
+  renderApp();
+  expect(screen.queryByText("Local by design")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
+  expect(window.localStorage.getItem("ytl2s.sidebar.collapsed")).toBe("false");
+  expect(screen.getByText("Local by design")).toBeInTheDocument();
 });
 
 it("reports a failed backend connection and supports retry", async () => {

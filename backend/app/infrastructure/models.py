@@ -52,6 +52,7 @@ class VideoRecord(Base):
         Index("ix_videos_processing_status", "processing_status"),
         Index("ix_videos_download_status", "download_status"),
         Index("ix_videos_discovered_at", "discovered_at"),
+        Index("ix_videos_is_excluded", "is_excluded"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -90,6 +91,8 @@ class VideoRecord(Base):
     )
     download_retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     download_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    matched_exclusion_keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -150,6 +153,16 @@ class ChannelBoardProfileRecord(Base):
     reference_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reference_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class AppSettingRecord(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )

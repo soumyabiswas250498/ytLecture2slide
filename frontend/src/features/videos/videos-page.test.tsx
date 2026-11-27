@@ -57,6 +57,8 @@ const emptySummary: videosService.VideoSummary = {
   pending: 0,
   today: 0,
   latest_discovery_at: null,
+  eligible: 0,
+  excluded: 0,
 };
 
 const emptyList: videosService.VideoList = {
@@ -95,6 +97,8 @@ const sampleVideo: videosService.Video = {
   download_error: null,
   created_at: "2025-01-15T12:00:00Z",
   updated_at: "2025-01-15T12:00:00Z",
+  is_excluded: false,
+  excluded_keywords: [],
 };
 
 const videoList: videosService.VideoList = {
@@ -153,13 +157,88 @@ describe("VideosPage", () => {
       pending: 10,
       today: 5,
       latest_discovery_at: "2025-01-15T12:00:00Z",
+      eligible: 38,
+      excluded: 4,
     };
     vi.mocked(videosService.getVideoSummary).mockResolvedValue(summary);
     vi.mocked(videosService.listVideos).mockResolvedValue(emptyList);
     render(<VideosPage />, { wrapper });
     await waitFor(() => expect(screen.getByText("42")).toBeInTheDocument());
+    expect(screen.getByText("38")).toBeInTheDocument();
+    expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByText("10")).toBeInTheDocument();
-    expect(screen.getByText("5")).toBeInTheDocument();
+  });
+
+  it("renders excluded video with muted styling, badge, disabled selection/actions, and eligibility filter", async () => {
+    const excludedVideo: videosService.Video = {
+      ...sampleVideo,
+      id: 2,
+      youtube_video_id: "math999",
+      title: "WBPSC Math Class 1",
+      is_excluded: true,
+      excluded_keywords: ["Math"],
+    };
+    vi.mocked(videosService.getVideoSummary).mockResolvedValue({
+      total: 2,
+      pending: 2,
+      today: 2,
+      latest_discovery_at: null,
+      eligible: 1,
+      excluded: 1,
+    });
+    vi.mocked(videosService.listVideos).mockResolvedValue({
+      items: [sampleVideo, excludedVideo],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      total_pages: 1,
+    });
+
+    const user = userEvent.setup();
+    render(<VideosPage />, { wrapper });
+
+    expect(await screen.findByText("WBPSC Math Class 1")).toBeInTheDocument();
+    expect(
+      screen.getByTitle("Excluded by keyword(s): Math"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Math")).toBeInTheDocument();
+
+    const excludedCheckbox = screen.getByRole("checkbox", {
+      name: "Select WBPSC Math Class 1",
+    });
+    expect(excludedCheckbox).toBeDisabled();
+
+    const excludedDownloadBtn = screen.getByRole("button", {
+      name: "Download WBPSC Math Class 1",
+    });
+    expect(excludedDownloadBtn).toBeDisabled();
+
+    // Watch on YouTube link remains accessible
+    expect(
+      screen.getByRole("link", { name: "Watch WBPSC Math Class 1 on YouTube" }),
+    ).toHaveAttribute("href", excludedVideo.video_url);
+
+    // Select all on page only selects eligible video (count = 1)
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all videos on page" }),
+    );
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Download \(1\)/i }),
+    ).toBeInTheDocument();
+
+    // Filter by eligibility
+    const eligibilityTrigger = screen.getByRole("combobox", {
+      name: "Filter by eligibility",
+    });
+    await user.click(eligibilityTrigger);
+    await user.click(screen.getByRole("option", { name: "Excluded videos" }));
+    await waitFor(() =>
+      expect(videosService.listVideos).toHaveBeenLastCalledWith(
+        expect.objectContaining({ eligibility: "excluded" }),
+        expect.any(AbortSignal),
+      ),
+    );
   });
 
   it("renders video table with channel name and video data", async () => {
@@ -168,6 +247,8 @@ describe("VideosPage", () => {
       pending: 1,
       today: 1,
       latest_discovery_at: null,
+      eligible: 1,
+      excluded: 0,
     });
     vi.mocked(videosService.listVideos).mockResolvedValue(videoList);
     render(<VideosPage />, { wrapper });
@@ -194,13 +275,14 @@ describe("VideosPage", () => {
     );
     render(<VideosPage />, { wrapper });
 
-    const channelSelect = await screen.findByLabelText("Filter by channel");
-    await waitFor(() =>
-      expect(
-        screen.getByRole("option", { name: "WBPSC Academy" }),
-      ).toBeInTheDocument(),
-    );
-    await user.selectOptions(channelSelect, "1");
+    const channelSelect = await screen.findByRole("combobox", {
+      name: "Filter by channel",
+    });
+    await user.click(channelSelect);
+    const channelOption = await screen.findByRole("option", {
+      name: "WBPSC Academy",
+    });
+    await user.click(channelOption);
 
     await waitFor(() =>
       expect(videosService.listVideos).toHaveBeenLastCalledWith(
@@ -329,7 +411,7 @@ describe("VideosPage", () => {
     await user.click(checkbox);
 
     const bulkBtn = screen.getByRole("button", {
-      name: /Download Selected \(1\)/i,
+      name: /Download \(1\)/i,
     });
     await user.click(bulkBtn);
 
@@ -337,7 +419,7 @@ describe("VideosPage", () => {
       expect(videosService.startBulkDownload).toHaveBeenCalledWith([1]),
     );
     expect(
-      await screen.findByText(/Bulk download requested: 1 started/i),
+      await screen.findByText(/Bulk download: 1 video started/i),
     ).toBeInTheDocument();
   });
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("processes slides, compares results and adjusts crop", async ({
+test("processes slides and compares results in fullscreen modal without crop controls", async ({
   page,
 }) => {
   const video = {
@@ -136,23 +136,16 @@ test("processes slides, compares results and adjusts crop", async ({
   await page
     .getByRole("button", { name: "Process Slides", exact: true })
     .click();
-  await expect(page.getByText("Slides: processed")).toBeVisible();
-  await page.getByRole("button", { name: "Compare slides" }).click();
-  await expect(page.getByRole("dialog").getByRole("img")).toHaveCount(4);
+  await expect(page.getByText("In 3 · +2 · Dup 1 · Out 2")).toBeVisible();
   await expect(
-    page.getByText("Fallback · Incomplete · Manual review required"),
-  ).toBeVisible();
+    page.getByRole("button", { name: /Adjust board crop/i }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Compare slides" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("img")).toHaveCount(2);
+  await expect(dialog.getByText("Slide 1 of 1")).toBeVisible();
+  await expect(dialog.getByText("00:01:00", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Technical diagnostics")).toBeVisible();
   await page.getByRole("button", { name: "Close dialog" }).click();
-  await page.getByRole("button", { name: "Adjust board crop" }).click();
-  await page.getByRole("spinbutton", { name: "Crop bottom" }).fill("0.9");
-  const request = page.waitForRequest(
-    (request) =>
-      request.url().endsWith("/slide-processing") &&
-      request.method() === "POST",
-  );
-  await page.getByRole("button", { name: "Apply crop and reprocess" }).click();
-  expect((await request).postDataJSON()).toEqual({
-    configuration: { crop: { left: 0, top: 0, right: 1, bottom: 0.9 } },
-    reprocess: true,
-  });
 });

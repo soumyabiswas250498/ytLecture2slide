@@ -480,3 +480,53 @@ Retained locally in ignored `storage/phase6/eval/`:
 - **Stationary teacher obstruction**: `59/79` slides on BSSEI and `61/61` on VSCE remain `incomplete` (`manual_review=True`) because the teacher remains partially in front of the smartboard throughout those segments; permanently occluded regions cannot be recovered without hallucination.
 - **Transition scan bound**: `transition_scan_max_probes` defaults to `12` evenly spaced interval midpoints (~0.8s overhead); slides displayed entirely between unprobed 60s intervals can still be missed.
 - **Channel crop UI test coverage**: The new `ChannelBoardProfileModal` is verified via ESLint, `tsc -b`, Vite build, and live Docker API CRUD/persistence; dedicated Vitest/Playwright UI specs for the modal can be added if desired.
+
+---
+
+# Phase 6 UI Refinement & Workflow Simplification Addendum (2026-11-27)
+
+## 1. Issues Resolved & Functional Changes
+
+- **Full-width compact desktop layout**: Removed `max-w-5xl` and excessive padding/margins in `app.tsx`, `dashboard.tsx`, `channels-page.tsx`, and `videos-page.tsx`; reduced `h1` scale and card/table padding.
+- **Shared reusable UI components**: Created `Select` (`components/ui/select.tsx` with placeholder, disabled state, keyboard navigation, accessible labels, and long-label support) and shared primitives (`PageContainer`, `PageHeader`, `StatCard`, `StatusBadge`, `ActionButton`, `ProgressIndicator`, `NotificationAlert`, `ConfirmDialog`, `DataTable`, `FilterToolbar`, `BulkActionToolbar`).
+- **Channels page**: Replaced full channel URLs and internal `youtube_channel_id` text in table rows with compact `Visit channel` and `Watch video` links, kept row actions on a single horizontal row on desktop, and replaced native `<select>` with the shared `Select`.
+- **Videos page & Unified Bulk Toolbar**: Removed scattered toolbars above the heading, enforced page hierarchy (header → summary → filters → unified bulk toolbar → table → pagination), replaced the oversized discovery panel with dismissible expandable `NotificationAlert`, removed the misleading overall `Pending` badge from the Slides column, and consolidated bulk actions into `UnifiedBulkToolbar` (`Download → Extract Frames → Process Slides`) with live eligibility counts, mixed-selection exclusion reasons using video titles, and singular/plural wording.
+- **Slide processing & manual review removal**: Compacted `SlideControls` (input/additional/duplicates/output counts with expandable reconstruction/obstruction details) and replaced "Manual review required" with non-blocking informational "Potentially obstructed" wording in `SlideControls` and `SlidePreview`.
+
+## 2. Verification Results
+
+- **Frontend**: `47` Vitest tests passed across `8` files (including `select.test.tsx`, `unified-bulk-toolbar.test.tsx`, `channels-page.test.tsx`, `videos-page.test.tsx`, `slide-controls.test.tsx`, `extraction-controls.test.tsx`), ESLint (0 errors, 0 warnings), Prettier check, `tsc -b`, and Vite production build passed.
+- **Backend**: `247` Pytest tests passed (`1` opt-in `PHASE6_REAL_DATA` test skipped), Ruff lint passed, strict `mypy` passed (`64` files).
+- **Playwright E2E (Local & Docker `http://127.0.0.1:8080`)**: `12` passed, including `1280`, `1440`, and `1920` desktop viewport overflow checks.
+- **Visual screenshots**: Captured before/after screenshots in `storage/phase6_ui/` (`before-channels-1440.png`, `after-channels-1440.png`, `before-videos-1440.png`, `after-videos-1440.png`, `after-channels-1280.png`, `after-videos-1280.png`).
+
+---
+
+# Phase 6 Final UI and Workflow Refinement Addendum (2026-11-27)
+
+## 1. Issues Resolved
+
+- **Issue #5 — Slide Comparison Modal**: Added configurable sizes (`sm`, `md`, `lg`, `xl`, `fullscreen`) and focus restoration to `Modal` (`frontend/src/components/ui/modal.tsx`). Redesigned `SlidePreview` inside `size="fullscreen"` (`95vw × 95vh`) to show one slide at a time (`page_size=1`), display side-by-side Original vs Processed when they differ or a single large screenshot when identical, remove crop/mask panels, format timestamps as `HH:MM:SS`, support Previous/Next, Left/Right keyboard arrows, and direct slide jump, and collapse technical diagnostics. Applied `size="xl"` to `FramePreview`.
+- **Issue #6 — Collapsible Sidebar**: Added `AppSidebar` (`frontend/src/components/shared/app-sidebar.tsx`) with `220px` expanded / `60px` collapsed widths, `localStorage` persistence (`ytl2s.sidebar.collapsed`), accessible tooltips, active route highlighting, and hiding the `"Local by design"` footer in collapsed mode.
+- **Issue #7 — Remove Smartboard Cropping**: Disabled automatic cropping, perspective correction, and saved channel crop profiles in `SlideProcessor` and `SlideService` (`full_frame_board`, `reliability="full_frame"`, `fallback=False`); removed crop UI from `SlideControls` and `ChannelsPage` (deleted `channel-board-profile-modal.tsx`). Preserved `channel_board_profiles` table for backward compatibility.
+- **Issue #8 — Video Exclusion Keywords**: Implemented persistent SQLite `app_settings` + `videos.is_excluded` / `matched_exclusion_keywords` (Alembic `d4e5f6a7b8c9`), centralized Unicode-aware English/Bengali matcher (`backend/app/domain/exclusion.py`, `backend/app/services/exclusion.py`), `GET`/`PUT /api/v1/settings/exclusion-keywords`, automatic discovery classification and keyword-update reevaluation, backend enforcement across downloads/extractions/slides/bulk/recovery, Settings `"Exclude Keywords"` UI (`frontend/src/features/settings/settings-page.tsx`), and Videos page muted rows, `"Excluded"` badge, eligibility filter (`All` / `Eligible` / `Excluded`), summary counts, and bulk-toolbar exclusion.
+
+## 2. Full-Frame Evaluation Results (3 Authorized Lectures)
+
+Evaluated with `SlideProcessor` in full-frame mode (no cropping or channel profiles):
+
+| Dataset | Primaries | Extra samples | Published | Duplicates excluded | `clear_original` | Incomplete | Wall time |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| BSSEI (`vqYNwaqFPJM`, offline primaries) | 87 | 0 | 75 | 12 | 17 | 58 | 7.75 s |
+| TWS (`3jqcXCkRUDI`) | 31 | 18 | 30 | 1 | 27 | 3 | 7.95 s |
+| VSCE (`3S2vx41zkgY`, validation) | 70 | 52 | 66 | 4 | 0 | 66 | 24.11 s |
+
+Full-frame processing preserved all educational content and original dimensions without destructive grouping, handling persistent banners and VSCE's animated ticker conservatively.
+
+## 3. Verification Results
+
+- **Backend**: `252 passed, 1 skipped` (Pytest), Ruff format (`70` files), Ruff lint, strict `mypy` (`61` files).
+- **Frontend**: `52 passed` across `9` Vitest files, Prettier, ESLint (0 errors, 0 warnings), `tsc -b`, Vite production build.
+- **Playwright E2E**: `13 passed` locally (`7.8s`) and `13 passed` against Docker Compose (`7.4s`), including `1280px`, `1440px`, and `1920px` overflow checks.
+- **Docker**: Rebuilt `backend` (healthy) and `frontend` (started), `alembic current` at `d4e5f6a7b8c9 (head)` with `alembic check` clean, and verified exclusion keyword persistence across `docker compose up -d --force-recreate` (`["Math", "গণিত"]` persisted, `5` excluded / `16` eligible).
+- **Visual screenshots**: Captured in `storage/phase6_ui/` (`after-settings-1440.png`, `after-sidebar-collapsed-1440.png`, `after-videos-1280.png`, `after-videos-1920.png`).

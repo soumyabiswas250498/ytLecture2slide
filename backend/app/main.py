@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.channels import router as channels_router
 from app.api.extractions import router as extraction_router
 from app.api.health import router as health_router
+from app.api.settings import router as settings_router
 from app.api.slides import router as slides_router
 from app.api.videos import discovery_router, videos_router
 from app.core.config import Settings
@@ -20,9 +21,11 @@ from app.infrastructure.media_probe import FFprobeValidator
 from app.infrastructure.storage import Storage
 from app.infrastructure.ytdlp_downloader import YtDlpVideoDownloader
 from app.repositories.extractions import ExtractionRepository
+from app.repositories.settings import SettingsRepository
 from app.repositories.slides import ChannelBoardProfileRepository, SlideRepository
 from app.repositories.videos import VideoRepository
 from app.services.downloader import VideoDownloadService
+from app.services.exclusion import VideoExclusionService
 from app.services.extraction import ExtractionService
 from app.services.imaging.pipeline import SlideProcessor
 from app.services.slides import SlideService
@@ -45,6 +48,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.sessions = sessions
             app.state.storage = storage
             media_lock = threading.RLock()
+            exclusion_service = VideoExclusionService(
+                settings_repo=SettingsRepository(sessions),
+                video_repo=VideoRepository(sessions),
+                lock=media_lock,
+            )
+            app.state.exclusion_service = exclusion_service
             extraction_service = ExtractionService(
                 videos=VideoRepository(sessions),
                 repository=ExtractionRepository(sessions),
@@ -121,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(slides_router)
     app.include_router(extraction_router)
     app.include_router(health_router)
+    app.include_router(settings_router)
     app.include_router(channels_router)
     app.include_router(videos_router)
     app.include_router(discovery_router)

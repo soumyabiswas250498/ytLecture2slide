@@ -1,14 +1,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as api from "@/services/slides";
 import * as frames from "@/services/extractions";
-import { SlideControls, SlideToolbar } from "./slide-controls";
+import { Modal } from "@/components/ui/modal";
+import { SlideControls } from "./slide-controls";
 import { SlidePreview } from "./slide-preview";
 
 vi.mock("@/services/slides");
 vi.mock("@/services/extractions");
+
 const state = {
   video_id: 1,
   status: "pending" as const,
@@ -24,6 +26,7 @@ const state = {
   output_directory: null,
   error: null,
 };
+
 function wrapper({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider
@@ -40,6 +43,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
     </QueryClientProvider>
   );
 }
+
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(api.getSlideState).mockResolvedValue(state);
@@ -61,27 +65,18 @@ beforeEach(() => {
     error: null,
   });
 });
-it("processes available frames and applies a validated crop", async () => {
+
+it("processes available frames without crop controls", async () => {
   render(<SlideControls videoId={1} />, { wrapper });
   await userEvent.click(
     await screen.findByRole("button", { name: /^Process Slides$/ }),
   );
   expect(api.processSlides).toHaveBeenCalledWith(1, undefined, false);
-  await userEvent.click(
-    screen.getByRole("button", { name: "Adjust board crop" }),
-  );
-  const input = screen.getByRole("spinbutton", { name: "Crop bottom" });
-  await userEvent.clear(input);
-  await userEvent.type(input, "0.9");
-  await userEvent.click(
-    screen.getByRole("button", { name: "Apply crop and reprocess" }),
-  );
-  expect(api.processSlides).toHaveBeenLastCalledWith(
-    1,
-    { left: 0, top: 0, right: 1, bottom: 0.9 },
-    false,
-  );
+  expect(
+    screen.queryByRole("button", { name: /Adjust board crop/i }),
+  ).not.toBeInTheDocument();
 });
+
 it("shows measured progress and cancels", async () => {
   vi.mocked(api.getSlideState).mockResolvedValue({
     ...state,
@@ -95,10 +90,14 @@ it("shows measured progress and cancels", async () => {
   expect(
     await screen.findByText("2 / 3 primary screenshots examined"),
   ).toBeVisible();
-  expect(screen.getByRole("progressbar")).toHaveAttribute("value", "66.7");
+  expect(screen.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "66.7",
+  );
   await userEvent.click(screen.getByRole("button", { name: "Cancel slides" }));
   expect(api.slideAction).toHaveBeenCalledWith(1, "cancel");
 });
+
 it("retries failure and confirms deletion", async () => {
   vi.mocked(api.getSlideState).mockResolvedValue({
     ...state,
@@ -115,39 +114,124 @@ it("retries failure and confirms deletion", async () => {
   );
   expect(api.deleteSlides).not.toHaveBeenCalled();
   await userEvent.click(
-    screen.getByRole("button", { name: "Confirm delete processed slides" }),
+    screen.getByRole("button", { name: "Confirm delete slides" }),
   );
   expect(api.deleteSlides).toHaveBeenCalledWith(1);
 });
-it("reports bulk per-video outcomes", async () => {
-  vi.mocked(api.processSelected).mockResolvedValue({
-    started_ids: [1],
-    errors: [{ video_id: 2, reason: "No frames" }],
+
+it("shows expandable reconstruction and obstruction details without blocking", async () => {
+  vi.mocked(api.getSlideState).mockResolvedValue({
+    ...state,
+    status: "processed",
+    input_count: 5,
+    additional_count: 2,
+    duplicate_count: 1,
+    output_count: 4,
+    reconstructed_count: 2,
+    review_count: 1,
+    output_directory: "/slides",
   });
-  render(<SlideToolbar selectedIds={[1, 2]} />, { wrapper });
-  await userEvent.click(
-    screen.getByRole("button", { name: "Process selected slides" }),
-  );
-  expect(await screen.findByText("Video #2: No frames")).toBeVisible();
+  render(<SlideControls videoId={1} />, { wrapper });
+  expect(await screen.findByText("In 5 · +2 · Dup 1 · Out 4")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: /Details/i }));
+  expect(
+    screen.getByText(
+      /Reconstructed: 2 · Potentially obstructed: 1 \(retained\)/,
+    ),
+  ).toBeVisible();
 });
-it("compares four images, marks incomplete fallback and paginates", async () => {
+
+it("displays single large image when original and processed match, and supports keyboard/jump navigation", async () => {
   vi.mocked(api.slideUrl).mockReturnValue("/image.png");
   vi.mocked(api.getSlides).mockResolvedValue({
     items: [
       {
         slide_id: "slide_00001",
-        source_frame_ids: ["frame.png"],
+        source_frame_ids: ["frame_000000000.png"],
+        source_timestamps: [185],
+        additional_sampled_timestamps: [],
+        processed_image_path: "frame_000000000.png",
+        cropped_image_path: "frame_000000000.png",
+        original_image_path: "frame_000000000.png",
+        obstruction_mask_path: null,
+        reconstruction_method: "original",
+        fallback: false,
+        incomplete: false,
+        manual_review: false,
+        warnings: ["Board boundary uncertain; full frame retained."],
+        board_coordinates: [
+          [0, 0],
+          [1, 0],
+          [1, 1],
+          [0, 1],
+        ],
+        quality: {
+          obstruction_fraction: 0.01,
+          unresolved_fraction: 0,
+          measurement_kind: "heuristic_not_accuracy",
+          verified_accuracy: null,
+        },
+      },
+    ],
+    generation: "abc",
+    total: 7,
+    page: 1,
+    page_size: 1,
+    warnings: [],
+  });
+  render(<SlidePreview videoId={1} />, { wrapper });
+  expect(await screen.findByText("Slide 1 of 7")).toBeVisible();
+  expect(screen.getByText("00:03:05")).toBeVisible();
+  expect(screen.getAllByRole("img")).toHaveLength(1);
+  expect(screen.queryByText(/Cropped smartboard/i)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText(/Board boundary uncertain/i),
+  ).not.toBeInTheDocument();
+
+  // Keyboard right arrow advances to slide 2
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  await waitFor(() =>
+    expect(api.getSlides).toHaveBeenCalledWith(
+      1,
+      2,
+      expect.any(AbortSignal),
+      1,
+    ),
+  );
+
+  // Jump directly to slide 5
+  const jumpInput = await screen.findByLabelText("Go to");
+  await userEvent.clear(jumpInput);
+  await userEvent.type(jumpInput, "5");
+  await userEvent.click(screen.getByRole("button", { name: "Go" }));
+  await waitFor(() =>
+    expect(api.getSlides).toHaveBeenCalledWith(
+      1,
+      5,
+      expect.any(AbortSignal),
+      1,
+    ),
+  );
+});
+
+it("displays side-by-side comparison when original and processed differ", async () => {
+  vi.mocked(api.slideUrl).mockReturnValue("/image.png");
+  vi.mocked(api.getSlides).mockResolvedValue({
+    items: [
+      {
+        slide_id: "slide_00001",
+        source_frame_ids: ["frame_000000000.png"],
         source_timestamps: [60],
         additional_sampled_timestamps: [],
         processed_image_path: "slide_00001.png",
-        cropped_image_path: "crop_00001.png",
+        cropped_image_path: "original_00001.png",
         original_image_path: "original_00001.png",
-        obstruction_mask_path: "mask_00001.png",
-        reconstruction_method: "original",
-        fallback: true,
+        obstruction_mask_path: null,
+        reconstruction_method: "masked_pixel_fusion",
+        fallback: false,
         incomplete: true,
         manual_review: true,
-        warnings: ["Visibility uncertain"],
+        warnings: [],
         board_coordinates: [
           [0, 0],
           [1, 0],
@@ -163,20 +247,28 @@ it("compares four images, marks incomplete fallback and paginates", async () => 
       },
     ],
     generation: "abc",
-    total: 7,
+    total: 3,
     page: 1,
-    page_size: 6,
+    page_size: 1,
     warnings: [],
   });
   render(<SlidePreview videoId={1} />, { wrapper });
-  expect(
-    await screen.findByText("Fallback · Incomplete · Manual review required"),
-  ).toBeVisible();
-  expect(screen.getAllByRole("img")).toHaveLength(4);
-  for (const link of screen.getAllByRole("link"))
-    expect(link).toHaveAttribute("target", "_blank");
-  await userEvent.click(screen.getByRole("button", { name: "Next slides" }));
-  await waitFor(() =>
-    expect(api.getSlides).toHaveBeenCalledWith(1, 2, expect.any(AbortSignal)),
+  expect(await screen.findByText("Original screenshot")).toBeVisible();
+  expect(screen.getByText("Processed screenshot")).toBeVisible();
+  expect(screen.getAllByRole("img")).toHaveLength(2);
+});
+
+it("renders shared Modal with configurable sizes", () => {
+  const { rerender } = render(
+    <Modal open title="Test" size="fullscreen" onClose={() => undefined}>
+      <div>Body</div>
+    </Modal>,
   );
+  expect(screen.getByRole("dialog").className).toContain("w-[95vw]");
+  rerender(
+    <Modal open title="Test" size="xl" onClose={() => undefined}>
+      <div>Body</div>
+    </Modal>,
+  );
+  expect(screen.getByRole("dialog").className).toContain("max-w-6xl");
 });

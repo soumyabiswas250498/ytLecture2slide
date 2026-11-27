@@ -14,9 +14,9 @@ import cv2
 
 from app.core.config import Settings
 from app.domain.downloads import DownloadError, VideoNotFoundError
+from app.domain.exclusion import VideoExcludedError, format_exclusion_reason
 from app.domain.extraction import ExtractionCancelled, ExtractionError
 from app.domain.slides import (
-    ChannelBoardProfile,
     SlideConfig,
     SlideConflict,
     SlideError,
@@ -91,6 +91,12 @@ class SlideService:
             if self.stopping.is_set():
                 raise SlideConflict("Slide processor is shutting down.")
             state = self.state(video_id)
+            video = self.videos.get_by_id(video_id)
+            if video is not None and video.is_excluded:
+                raise VideoExcludedError(
+                    format_exclusion_reason(video.excluded_keywords),
+                    video.excluded_keywords,
+                )
             self.assert_inactive(video_id)
             self.extraction.assert_inactive(video_id)
             directory = self.extraction.directory(video_id)
@@ -99,59 +105,26 @@ class SlideService:
                 raise SlideConflict("Only failed or cancelled processing can be retried.")
             if state.output_directory and not (retry or reprocess):
                 raise SlideConflict("Slides already exist; explicitly request reprocessing.")
-            video = self.videos.get_by_id(video_id)
-            saved_profile = (
-                self.board_profiles.get(video.channel_id)
-                if video and video.channel_id and self.board_profiles is not None
-                else None
-            )
-            profile = (
-                self.settings.slide_channel_profiles.get(str(video.channel_id)) if video else None
-            )
             base = (
                 SlideConfig.model_validate_json(state.configuration)
                 if retry
-                else profile or self.settings.slide_processing
+                else self.settings.slide_processing
             )
-            if not retry and saved_profile is not None and (config is None or config.crop is None):
-                aspect = (
-                    saved_profile.reference_width / saved_profile.reference_height
-                    if saved_profile.reference_width and saved_profile.reference_height
-                    else None
-                )
-                base = base.model_copy(
-                    update={
-                        "profile_crop": saved_profile.crop,
-                        "profile_reference_aspect": aspect,
-                        "corners": saved_profile.corners,
-                    }
-                )
             if config is not None:
                 overrides = base.model_dump()
                 overrides.update(config.model_dump(exclude_unset=True))
                 config = SlideConfig.model_validate(overrides)
             else:
                 config = base
-            if (
-                not retry
-                and save_channel_profile
-                and video
-                and video.channel_id
-                and self.board_profiles is not None
-                and config.crop is not None
-            ):
-                ref_w = inputs.frames[0].width if inputs.frames else None
-                ref_h = inputs.frames[0].height if inputs.frames else None
-                self.board_profiles.upsert(
-                    ChannelBoardProfile(
-                        channel_id=video.channel_id,
-                        crop=config.crop,
-                        corners=config.corners,
-                        reference_width=ref_w,
-                        reference_height=ref_h,
-                        validated=True,
-                    )
-                )
+            # Full-frame processing policy: ignore any crop, perspective, or profile fields.
+            config = config.model_copy(
+                update={
+                    "crop": None,
+                    "corners": None,
+                    "profile_crop": None,
+                    "profile_reference_aspect": None,
+                }
+            )
             self.root.mkdir(parents=True, exist_ok=True)
             self._directory(video_id)
             if shutil.disk_usage(self.root).free < config.min_free_disk_mb * 1024 * 1024:
@@ -188,6 +161,15 @@ class SlideService:
         for state in self.repository.recoverable():
             with self.lock:
                 if state.video_id in self.events:
+                    continue
+                video = self.videos.get_by_id(state.video_id)
+                if video is not None and video.is_excluded:
+                    self.repository.save(
+                        state.video_id,
+                        status="cancelled",
+                        requested=False,
+                        error=format_exclusion_reason(video.excluded_keywords),
+                    )
                     continue
                 if state.retry_count >= self.settings.slide_retry_attempts:
                     self.repository.save(

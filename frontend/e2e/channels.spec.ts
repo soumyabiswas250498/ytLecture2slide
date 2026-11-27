@@ -31,8 +31,11 @@ test("channel creation, editing, CSV import, and cleanup persist via real backen
   const table = page.getByRole("table");
   await expect(table.getByText(createdName, { exact: true })).toBeVisible();
   await expect(
-    table.getByText(`https://www.youtube.com/${handle}`),
+    table.getByRole("link", { name: `Visit ${createdName} channel` }),
   ).toBeVisible();
+  await expect(
+    table.getByText(`https://www.youtube.com/${handle}`),
+  ).not.toBeVisible();
 
   // Reload to prove database persistence
   await page.reload();

@@ -96,13 +96,15 @@ test("configures sampling and previews frames through extraction controls", asyn
     }),
   );
   await page.goto("/videos");
-  await page
-    .getByRole("spinbutton", { name: "Screenshot interval (seconds)" })
-    .fill("30");
+  const intervalInput = page.getByRole("spinbutton", {
+    name: "Screenshot interval (seconds)",
+  });
+  await expect(intervalInput).not.toHaveValue("");
+  await intervalInput.fill("30");
   await page
     .getByRole("button", { name: "Extract Frames", exact: true })
     .click();
-  await expect(page.getByText("5 / 5 frames")).toBeVisible();
+  await expect(page.getByText("5 / 5")).toBeVisible();
   await page.getByRole("button", { name: "Preview frames" }).click();
   await expect(page.getByRole("dialog").getByRole("img")).toBeVisible();
   await expect(page.getByRole("dialog").getByText(/1280×720/)).toBeVisible();

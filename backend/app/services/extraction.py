@@ -21,6 +21,7 @@ from app.domain.downloads import (
     InsufficientDiskSpaceError,
     VideoNotFoundError,
 )
+from app.domain.exclusion import VideoExcludedError, format_exclusion_reason
 from app.domain.extraction import (
     ExtractionCancelled,
     ExtractionConflict,
@@ -108,6 +109,12 @@ class ExtractionService:
         with self._lock:
             if self._shutdown.is_set():
                 raise ExtractionConflict("Extractor is shutting down.")
+            video = self._videos.get_by_id(video_id)
+            if video is not None and video.is_excluded:
+                raise VideoExcludedError(
+                    format_exclusion_reason(video.excluded_keywords),
+                    video.excluded_keywords,
+                )
             if self.processing_guard:
                 self.processing_guard(video_id)
             self._source(video_id)
@@ -164,6 +171,15 @@ class ExtractionService:
         for state in self._repo.recoverable():
             with self._lock:
                 if state.video_id in self._events:
+                    continue
+                video = self._videos.get_by_id(state.video_id)
+                if video is not None and video.is_excluded:
+                    self._repo.save(
+                        state.video_id,
+                        status="cancelled",
+                        requested=False,
+                        error=format_exclusion_reason(video.excluded_keywords),
+                    )
                     continue
                 if state.retry_count >= self._settings.extraction_retry_attempts:
                     self._repo.save(

@@ -1,5 +1,3 @@
-import { SlideControls, SlideToolbar } from "./slide-controls";
-import { ExtractionControls, ExtractionToolbar } from "./extraction-controls";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,13 +11,23 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { ActionButton } from "@/components/shared/action-button";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { DataTable } from "@/components/shared/data-table";
+import { FilterToolbar } from "@/components/shared/filter-toolbar";
+import { NotificationAlert } from "@/components/shared/notification-alert";
+import { PageContainer } from "@/components/shared/page-container";
+import { PageHeader } from "@/components/shared/page-header";
+import { ProgressIndicator } from "@/components/shared/progress-indicator";
+import { StatCard } from "@/components/shared/stat-card";
 import {
   EmptyState,
   ErrorState,
   LoadingState,
 } from "@/components/shared/states";
+import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { ApiError } from "@/services/api";
 import { listChannels } from "@/services/channels";
 import {
@@ -31,17 +39,63 @@ import {
   retryVideoDownload,
   runChannelDiscovery,
   runDiscovery,
-  startBulkDownload,
   startVideoDownload,
-  type BulkDownloadResponse,
   type DiscoveryRun,
   type DownloadProgress,
   type DownloadStatus,
+  type EligibilityFilter,
   type ProcessingStatus,
   type Video,
 } from "@/services/videos";
+import { ExtractionControls } from "./extraction-controls";
+import { SlideControls } from "./slide-controls";
+import { UnifiedBulkToolbar } from "./unified-bulk-toolbar";
 
 const PAGE_SIZE = 20;
+
+const DOWNLOAD_STATUS_TONE: Record<DownloadStatus, StatusTone> = {
+  pending: "neutral",
+  downloading: "info",
+  downloaded: "success",
+  failed: "error",
+  cancelled: "warning",
+};
+
+const PROCESSING_OPTIONS: readonly SelectOption<ProcessingStatus | "">[] = [
+  { value: "", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "queued", label: "Queued" },
+  { value: "running", label: "Running" },
+  { value: "succeeded", label: "Succeeded" },
+  { value: "failed", label: "Failed" },
+  { value: "skipped", label: "Skipped" },
+];
+
+const DOWNLOAD_OPTIONS: readonly SelectOption<DownloadStatus | "">[] = [
+  { value: "", label: "All downloads" },
+  { value: "pending", label: "Not downloaded" },
+  { value: "downloading", label: "Downloading" },
+  { value: "downloaded", label: "Downloaded" },
+  { value: "failed", label: "Failed" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+const ELIGIBILITY_OPTIONS: readonly SelectOption<EligibilityFilter>[] = [
+  { value: "all", label: "All videos" },
+  { value: "eligible", label: "Eligible videos" },
+  { value: "excluded", label: "Excluded videos" },
+];
+
+type SortBy = "published_at" | "discovered_at" | "title" | "duration_seconds";
+type SortOrder = "asc" | "desc";
+
+const SORT_OPTIONS: readonly SelectOption<string>[] = [
+  { value: "published_at:desc", label: "Newest published" },
+  { value: "published_at:asc", label: "Oldest published" },
+  { value: "discovered_at:desc", label: "Recently discovered" },
+  { value: "duration_seconds:desc", label: "Longest first" },
+  { value: "title:asc", label: "Title A–Z" },
+];
 
 function formatDuration(seconds: number): string {
   const rounded = Math.max(0, Math.round(seconds));
@@ -81,99 +135,9 @@ function formatIST(iso: string): string {
   }
 }
 
-function getStatusBadgeClass(status: ProcessingStatus): string {
-  const map: Record<ProcessingStatus, string> = {
-    pending: "bg-yellow-100 text-yellow-800",
-    queued: "bg-blue-100 text-blue-800",
-    running: "bg-indigo-100 text-indigo-800",
-    succeeded: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    skipped: "bg-gray-100 text-gray-600",
-  };
-  return map[status] ?? "bg-gray-100 text-gray-600";
-}
-
-function getDownloadBadgeClass(status: DownloadStatus): string {
-  const map: Record<DownloadStatus, string> = {
-    pending: "bg-slate-100 text-slate-700",
-    downloading: "bg-blue-100 text-blue-800",
-    downloaded: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    cancelled: "bg-amber-100 text-amber-800",
-  };
-  return map[status] ?? "bg-gray-100 text-gray-600";
-}
-
 function getErrorMessage(error: unknown): string {
   if (error instanceof ApiError || error instanceof Error) return error.message;
   return "An unexpected error occurred.";
-}
-
-type SortBy = "published_at" | "discovered_at" | "title" | "duration_seconds";
-type SortOrder = "asc" | "desc";
-
-function DiscoverySummaryBanner({ run }: { run: DiscoveryRun }) {
-  const hasErrors = run.errors.length > 0;
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={`rounded-lg border p-4 text-sm ${
-        hasErrors
-          ? "border-yellow-300 bg-yellow-50"
-          : "border-green-300 bg-green-50"
-      }`}
-    >
-      <p className="font-semibold">
-        Discovery complete — {run.new_videos_added} new video
-        {run.new_videos_added !== 1 ? "s" : ""} added
-      </p>
-      <ul className="mt-2 list-inside list-disc text-muted-foreground">
-        <li>Channels checked: {run.channels_checked}</li>
-        <li>Videos found: {run.videos_found}</li>
-        <li>Existing skipped: {run.existing_videos_skipped}</li>
-        <li>Rejected (duration): {run.videos_rejected_duration}</li>
-        <li>Livestreams deferred: {run.livestreams_deferred}</li>
-        <li>
-          API requests: {run.api_requests_made} (search:{" "}
-          {run.search_requests_made})
-        </li>
-        <li>Duration: {run.duration_seconds.toFixed(1)}s</li>
-      </ul>
-      {hasErrors && (
-        <ul className="mt-2 list-inside list-disc text-red-700">
-          {run.errors.map((e, i) => (
-            <li key={i}>{e}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function BulkDownloadBanner({ result }: { result: BulkDownloadResponse }) {
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm"
-    >
-      <p className="font-semibold text-blue-900">
-        Bulk download requested: {result.started_ids.length} started
-        {result.skipped.length > 0 ? `, ${result.skipped.length} skipped` : ""}
-        {result.errors.length > 0 ? `, ${result.errors.length} failed` : ""}
-      </p>
-      {result.errors.length > 0 && (
-        <ul className="mt-1 list-inside list-disc text-red-700">
-          {result.errors.map((item) => (
-            <li key={item.video_id}>
-              Video #{item.video_id}: {item.reason}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 export function VideosPage() {
@@ -191,17 +155,18 @@ export function VideosPage() {
   const [downloadStatusFilter, setDownloadStatusFilter] = useState<
     DownloadStatus | ""
   >("");
+  const [eligibilityFilter, setEligibilityFilter] =
+    useState<EligibilityFilter>("all");
   const [publishedAfterDate, setPublishedAfterDate] = useState("");
   const [publishedBeforeDate, setPublishedBeforeDate] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("published_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [page, setPage] = useState(1);
   const [lastRun, setLastRun] = useState<DiscoveryRun | null>(null);
-  const [bulkResult, setBulkResult] = useState<BulkDownloadResponse | null>(
-    null,
-  );
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [selectedVideosMap, setSelectedVideosMap] = useState<
+    Map<number, Video>
+  >(new Map());
   const [deleteTarget, setDeleteTarget] = useState<Video | null>(null);
 
   const handleSearchChange = (value: string) => {
@@ -231,6 +196,17 @@ export function VideosPage() {
     return map;
   }, [channelsQuery.data]);
 
+  const channelOptions = useMemo<SelectOption<string>[]>(
+    () => [
+      { value: "", label: "All channels" },
+      ...(channelsQuery.data?.items ?? []).map((ch) => ({
+        value: String(ch.id),
+        label: ch.name,
+      })),
+    ],
+    [channelsQuery.data],
+  );
+
   const summaryQuery = useQuery({
     queryKey: ["video-summary"],
     queryFn: ({ signal }) => getVideoSummary(signal),
@@ -250,6 +226,7 @@ export function VideosPage() {
       channelIdFilter,
       statusFilter,
       downloadStatusFilter,
+      eligibilityFilter,
       publishedAfterIso,
       publishedBeforeIso,
       sortBy,
@@ -263,6 +240,7 @@ export function VideosPage() {
           channel_id: channelIdFilter,
           processing_status: statusFilter || undefined,
           download_status: downloadStatusFilter || undefined,
+          eligibility: eligibilityFilter,
           published_after: publishedAfterIso,
           published_before: publishedBeforeIso,
           sort_by: sortBy,
@@ -278,7 +256,6 @@ export function VideosPage() {
     videosQuery.data?.items.some((v) => v.download_status === "downloading"),
   );
 
-  // Poll active downloads only while downloads are active.
   const activeDownloadsQuery = useQuery({
     queryKey: ["active-downloads"],
     queryFn: ({ signal }) => getActiveDownloads(signal),
@@ -295,8 +272,8 @@ export function VideosPage() {
       prevActiveCountRef.current > 0 &&
       currentCount < prevActiveCountRef.current
     ) {
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["video-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["videos"] });
+      void queryClient.invalidateQueries({ queryKey: ["video-summary"] });
     }
     prevActiveCountRef.current = currentCount;
   }, [activeDownloadsQuery.data, queryClient]);
@@ -310,8 +287,8 @@ export function VideosPage() {
   }, [activeDownloadsQuery.data]);
 
   const invalidateDownloads = () => {
-    queryClient.invalidateQueries({ queryKey: ["videos"] });
-    queryClient.invalidateQueries({ queryKey: ["active-downloads"] });
+    void queryClient.invalidateQueries({ queryKey: ["videos"] });
+    void queryClient.invalidateQueries({ queryKey: ["active-downloads"] });
   };
 
   const discoverMutation = useMutation({
@@ -319,8 +296,8 @@ export function VideosPage() {
     onSuccess: (run) => {
       setLastRun(run);
       setMutationError(null);
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["video-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["videos"] });
+      void queryClient.invalidateQueries({ queryKey: ["video-summary"] });
     },
     onError: (err) => setMutationError(getErrorMessage(err)),
   });
@@ -330,8 +307,8 @@ export function VideosPage() {
     onSuccess: (run) => {
       setLastRun(run);
       setMutationError(null);
-      queryClient.invalidateQueries({ queryKey: ["videos"] });
-      queryClient.invalidateQueries({ queryKey: ["video-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["videos"] });
+      void queryClient.invalidateQueries({ queryKey: ["video-summary"] });
     },
     onError: (err) => setMutationError(getErrorMessage(err)),
   });
@@ -340,17 +317,6 @@ export function VideosPage() {
     mutationFn: (videoId: number) => startVideoDownload(videoId),
     onSuccess: () => {
       setMutationError(null);
-      invalidateDownloads();
-    },
-    onError: (err) => setMutationError(getErrorMessage(err)),
-  });
-
-  const bulkDownloadMutation = useMutation({
-    mutationFn: (videoIds: number[]) => startBulkDownload(videoIds),
-    onSuccess: (res) => {
-      setBulkResult(res);
-      setMutationError(null);
-      setSelectedIds(new Set());
       invalidateDownloads();
     },
     onError: (err) => setMutationError(getErrorMessage(err)),
@@ -401,6 +367,7 @@ export function VideosPage() {
     channelIdFilter !== undefined ||
     statusFilter ||
     downloadStatusFilter ||
+    eligibilityFilter !== "all" ||
     publishedAfterDate ||
     publishedBeforeDate,
   );
@@ -411,146 +378,166 @@ export function VideosPage() {
     setChannelIdFilter(undefined);
     setStatusFilter("");
     setDownloadStatusFilter("");
+    setEligibilityFilter("all");
     setPublishedAfterDate("");
     setPublishedBeforeDate("");
     setPage(1);
   };
 
-  const pageItems = videoList?.items ?? [];
+  const pageItems = useMemo(() => videoList?.items ?? [], [videoList?.items]);
+  const eligiblePageItems = useMemo(
+    () => pageItems.filter((v) => !v.is_excluded),
+    [pageItems],
+  );
   const allPageSelected =
-    pageItems.length > 0 && pageItems.every((v) => selectedIds.has(v.id));
+    eligiblePageItems.length > 0 &&
+    eligiblePageItems.every((v) => selectedVideosMap.has(v.id));
 
   const toggleSelectAllOnPage = () => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
+    setSelectedVideosMap((prev) => {
+      const next = new Map(prev);
       if (allPageSelected) {
-        for (const v of pageItems) next.delete(v.id);
+        for (const v of eligiblePageItems) next.delete(v.id);
       } else {
-        for (const v of pageItems) next.add(v.id);
+        for (const v of eligiblePageItems) next.set(v.id, v);
       }
       return next;
     });
   };
 
-  const toggleSelectOne = (videoId: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(videoId)) next.delete(videoId);
-      else next.add(videoId);
+  const toggleSelectOne = (video: Video) => {
+    if (video.is_excluded) return;
+    setSelectedVideosMap((prev) => {
+      const next = new Map(prev);
+      if (next.has(video.id)) next.delete(video.id);
+      else next.set(video.id, video);
       return next;
     });
   };
 
+  // Sync selected videos with latest page items so eligibility reflects live state
+  const selectedVideos = useMemo(() => {
+    const latestById = new Map(pageItems.map((v) => [v.id, v]));
+    return Array.from(selectedVideosMap.values()).map(
+      (v) => latestById.get(v.id) ?? v,
+    );
+  }, [selectedVideosMap, pageItems]);
+
   return (
-    <div className="space-y-8">
-      <SlideToolbar selectedIds={[...selectedIds]} />
-      <ExtractionToolbar
-        selectedIds={[...selectedIds]}
-        interval={extractionInterval}
-        setInterval={setExtractionInterval}
-      />
-      {/* Page header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="eyebrow">WORKSPACE</p>
-          <h1>Videos</h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {selectedIds.size > 0 && (
+    <PageContainer>
+      {/* 1. Page heading and Discover Videos action */}
+      <PageHeader
+        eyebrow="WORKSPACE"
+        title="Videos"
+        actions={
+          <>
+            {channelIdFilter !== undefined && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => discoverChannelMutation.mutate(channelIdFilter)}
+                disabled={isDiscovering}
+                aria-busy={discoverChannelMutation.isPending}
+              >
+                <RefreshCw
+                  size={14}
+                  className={
+                    discoverChannelMutation.isPending ? "animate-spin" : ""
+                  }
+                  aria-hidden="true"
+                />
+                {discoverChannelMutation.isPending
+                  ? "Discovering channel…"
+                  : `Discover ${selectedChannelName ?? "Channel"}`}
+              </Button>
+            )}
             <Button
-              variant="outline"
-              onClick={() =>
-                bulkDownloadMutation.mutate(Array.from(selectedIds))
-              }
-              disabled={bulkDownloadMutation.isPending}
-              aria-busy={bulkDownloadMutation.isPending}
-            >
-              <Download size={16} aria-hidden="true" />
-              {bulkDownloadMutation.isPending
-                ? "Starting downloads…"
-                : `Download Selected (${selectedIds.size})`}
-            </Button>
-          )}
-          {channelIdFilter !== undefined && (
-            <Button
-              variant="outline"
-              onClick={() => discoverChannelMutation.mutate(channelIdFilter)}
+              size="sm"
+              onClick={() => discoverMutation.mutate()}
               disabled={isDiscovering}
-              aria-busy={discoverChannelMutation.isPending}
+              aria-busy={discoverMutation.isPending}
             >
               <RefreshCw
-                size={16}
-                className={
-                  discoverChannelMutation.isPending ? "animate-spin" : ""
-                }
+                size={14}
+                className={discoverMutation.isPending ? "animate-spin" : ""}
                 aria-hidden="true"
               />
-              {discoverChannelMutation.isPending
-                ? "Discovering channel…"
-                : `Discover ${selectedChannelName ?? "Channel"}`}
+              {discoverMutation.isPending ? "Discovering…" : "Discover Videos"}
             </Button>
-          )}
-          <Button
-            onClick={() => discoverMutation.mutate()}
-            disabled={isDiscovering}
-            aria-busy={discoverMutation.isPending}
-          >
-            <RefreshCw
-              size={16}
-              className={discoverMutation.isPending ? "animate-spin" : ""}
-              aria-hidden="true"
-            />
-            {discoverMutation.isPending ? "Discovering…" : "Discover Videos"}
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      {/* Mutation error */}
       {mutationError && (
-        <div
-          role="alert"
-          className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700"
-        >
-          {mutationError}
-        </div>
+        <NotificationAlert
+          tone="error"
+          summary={mutationError}
+          onDismiss={() => setMutationError(null)}
+        />
       )}
 
-      {/* Last run summary */}
-      {lastRun && <DiscoverySummaryBanner run={lastRun} />}
-      {bulkResult && <BulkDownloadBanner result={bulkResult} />}
+      {lastRun && (
+        <NotificationAlert
+          tone={lastRun.errors.length > 0 ? "warning" : "success"}
+          summary={`Discovery complete — ${lastRun.new_videos_added} new video${lastRun.new_videos_added !== 1 ? "s" : ""} added`}
+          onDismiss={() => setLastRun(null)}
+          details={
+            <div className="space-y-1.5">
+              <p>
+                Channels checked: {lastRun.channels_checked} · Found:{" "}
+                {lastRun.videos_found} · Skipped:{" "}
+                {lastRun.existing_videos_skipped} · Duration rejected:{" "}
+                {lastRun.videos_rejected_duration} · Livestreams deferred:{" "}
+                {lastRun.livestreams_deferred} · API requests:{" "}
+                {lastRun.api_requests_made} (search:{" "}
+                {lastRun.search_requests_made}) ·{" "}
+                {lastRun.duration_seconds.toFixed(1)}s
+              </p>
+              {lastRun.errors.length > 0 && (
+                <ul className="list-inside list-disc text-red-800">
+                  {lastRun.errors.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          }
+        />
+      )}
 
-      {/* Summary cards */}
+      {/* 2. Compact summary statistics */}
       <section
         aria-label="Video summary"
-        className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-5"
       >
-        {[
-          { label: "Total videos", value: summary?.total ?? "—" },
-          { label: "Pending", value: summary?.pending ?? "—" },
-          { label: "Discovered today", value: summary?.today ?? "—" },
-          {
-            label: "Latest run",
-            value: summary?.latest_discovery_at
+        <StatCard label="Total videos" value={summary?.total ?? "—"} />
+        <StatCard
+          label="Eligible"
+          value={summary?.eligible ?? "—"}
+          tone="success"
+        />
+        <StatCard
+          label="Excluded"
+          value={summary?.excluded ?? "—"}
+          tone="muted"
+        />
+        <StatCard label="Pending" value={summary?.pending ?? "—"} />
+        <StatCard
+          label="Latest run"
+          value={
+            summary?.latest_discovery_at
               ? formatIST(summary.latest_discovery_at)
-              : "—",
-          },
-        ].map(({ label, value }) => (
-          <div
-            key={label}
-            className="rounded-xl border border-border bg-white p-4"
-          >
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 text-2xl font-bold leading-tight">{value}</p>
-          </div>
-        ))}
+              : "—"
+          }
+        />
       </section>
 
-      {/* Filters */}
-      <section aria-label="Filters" className="flex flex-wrap items-end gap-3">
-        <div className="relative min-w-[200px] flex-1">
+      {/* 3. Search and filter toolbar */}
+      <FilterToolbar ariaLabel="Filters">
+        <div className="relative min-w-[180px] flex-1">
           <Search
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
           />
           <input
@@ -559,111 +546,90 @@ export function VideosPage() {
             placeholder="Search by title…"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full rounded-lg border border-border py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            className="h-9 w-full rounded-md border border-border bg-white py-1.5 pr-3 pl-8 text-sm focus:border-primary focus:outline-none"
           />
         </div>
 
-        <select
-          aria-label="Filter by channel"
+        <Select
+          ariaLabel="Filter by channel"
           value={channelIdFilter !== undefined ? String(channelIdFilter) : ""}
-          onChange={(e) => {
-            const val = e.target.value;
+          options={channelOptions}
+          onValueChange={(val) => {
             setChannelIdFilter(val ? Number(val) : undefined);
             setPage(1);
           }}
-          className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="">All channels</option>
-          {(channelsQuery.data?.items ?? []).map((ch) => (
-            <option key={ch.id} value={ch.id}>
-              {ch.name}
-            </option>
-          ))}
-        </select>
+          className="w-40"
+        />
 
-        <select
-          aria-label="Filter by processing status"
+        <Select
+          ariaLabel="Filter by processing status"
           value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as ProcessingStatus | "");
+          options={PROCESSING_OPTIONS}
+          onValueChange={(val) => {
+            setStatusFilter(val);
             setPage(1);
           }}
-          className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="queued">Queued</option>
-          <option value="running">Running</option>
-          <option value="succeeded">Succeeded</option>
-          <option value="failed">Failed</option>
-          <option value="skipped">Skipped</option>
-        </select>
+          className="w-36"
+        />
 
-        <select
-          aria-label="Filter by download status"
+        <Select
+          ariaLabel="Filter by download status"
           value={downloadStatusFilter}
-          onChange={(e) => {
-            setDownloadStatusFilter(e.target.value as DownloadStatus | "");
+          options={DOWNLOAD_OPTIONS}
+          onValueChange={(val) => {
+            setDownloadStatusFilter(val);
             setPage(1);
           }}
-          className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="">All downloads</option>
-          <option value="pending">Not downloaded</option>
-          <option value="downloading">Downloading</option>
-          <option value="downloaded">Downloaded</option>
-          <option value="failed">Failed</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+          className="w-40"
+        />
 
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Published from
-          <input
-            type="date"
-            aria-label="Published after"
-            value={publishedAfterDate}
-            onChange={(e) => {
-              setPublishedAfterDate(e.target.value);
-              setPage(1);
-            }}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </label>
+        <Select
+          ariaLabel="Filter by eligibility"
+          value={eligibilityFilter}
+          options={ELIGIBILITY_OPTIONS}
+          onValueChange={(val) => {
+            setEligibilityFilter(val);
+            setPage(1);
+          }}
+          className="w-36"
+        />
 
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Published to
-          <input
-            type="date"
-            aria-label="Published before"
-            value={publishedBeforeDate}
-            onChange={(e) => {
-              setPublishedBeforeDate(e.target.value);
-              setPage(1);
-            }}
-            className="rounded-lg border border-border px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </label>
-
-        <select
-          aria-label="Sort videos"
-          value={`${sortBy}:${sortOrder}`}
+        <input
+          type="date"
+          aria-label="Published after"
+          title="Published after"
+          value={publishedAfterDate}
           onChange={(e) => {
-            const [by, order] = e.target.value.split(":") as [
-              SortBy,
-              SortOrder,
-            ];
+            setPublishedAfterDate(e.target.value);
+            setPage(1);
+          }}
+          className="h-9 rounded-md border border-border bg-white px-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+        />
+
+        <input
+          type="date"
+          aria-label="Published before"
+          title="Published before"
+          value={publishedBeforeDate}
+          onChange={(e) => {
+            setPublishedBeforeDate(e.target.value);
+            setPage(1);
+          }}
+          className="h-9 rounded-md border border-border bg-white px-2.5 text-sm text-foreground focus:border-primary focus:outline-none"
+        />
+
+        <Select
+          ariaLabel="Sort videos"
+          value={`${sortBy}:${sortOrder}`}
+          options={SORT_OPTIONS}
+          onValueChange={(val) => {
+            const [by, order] = val.split(":") as [SortBy, SortOrder];
             setSortBy(by);
             setSortOrder(order);
             setPage(1);
           }}
-          className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="published_at:desc">Newest published</option>
-          <option value="published_at:asc">Oldest published</option>
-          <option value="discovered_at:desc">Recently discovered</option>
-          <option value="duration_seconds:desc">Longest first</option>
-          <option value="title:asc">Title A–Z</option>
-        </select>
+          className="w-44"
+        />
 
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={resetFilters}>
@@ -671,9 +637,17 @@ export function VideosPage() {
             Clear filters
           </Button>
         )}
-      </section>
+      </FilterToolbar>
 
-      {/* Video table */}
+      {/* 4. Unified bulk processing toolbar */}
+      <UnifiedBulkToolbar
+        selectedVideos={selectedVideos}
+        interval={extractionInterval}
+        onIntervalChange={setExtractionInterval}
+        onClearSelection={() => setSelectedVideosMap(new Map())}
+      />
+
+      {/* 5. Video table */}
       {videosQuery.isLoading ? (
         <LoadingState message="Loading videos…" />
       ) : videosQuery.isError ? (
@@ -682,266 +656,263 @@ export function VideosPage() {
           onRetry={() => videosQuery.refetch()}
         />
       ) : videoList && videoList.total > 0 ? (
-        <div className="space-y-4">
-          <div className="overflow-x-auto rounded-xl border border-border">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className="w-10 px-3 py-3 text-left">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all videos on page"
-                      checked={allPageSelected}
-                      onChange={toggleSelectAllOnPage}
-                      className="h-4 w-4 rounded border-border"
-                    />
-                  </th>
-                  <th className="w-12 px-4 py-3 text-left font-medium text-muted-foreground">
-                    <span className="sr-only">Thumbnail</span>
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Title
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Channel
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Duration
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Published
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Download
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Frames
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Processing
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {videoList.items.map((video) => {
-                  const channelLabel =
-                    video.channel_id !== null
-                      ? (channelNameById.get(video.channel_id) ??
-                        `Channel #${video.channel_id}`)
-                      : "Deleted channel";
-                  const live = liveProgressByVideoId.get(video.id);
-                  const dlStatus = live?.status ?? video.download_status;
-                  const progressPct =
-                    live?.progress_percent ?? video.download_progress;
+        <div className="space-y-3">
+          <DataTable>
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground uppercase">
+                <th className="w-8 px-2 py-2 text-left">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all videos on page"
+                    checked={allPageSelected}
+                    disabled={eligiblePageItems.length === 0}
+                    onChange={toggleSelectAllOnPage}
+                    className="h-4 w-4 rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </th>
+                <th className="w-14 px-1.5 py-2 text-left font-semibold">
+                  <span className="sr-only">Thumbnail</span>
+                </th>
+                <th className="px-2 py-2 text-left font-semibold">Title</th>
+                <th className="px-2 py-2 text-left font-semibold">Channel</th>
+                <th className="px-2 py-2 text-left font-semibold">Duration</th>
+                <th className="px-2 py-2 text-left font-semibold">Published</th>
+                <th className="px-2 py-2 text-left font-semibold">Download</th>
+                <th className="px-2 py-2 text-left font-semibold">Frames</th>
+                <th className="px-2 py-2 text-left font-semibold">Slides</th>
+                <th className="px-2 py-2 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {videoList.items.map((video) => {
+                const channelLabel =
+                  video.channel_id !== null
+                    ? (channelNameById.get(video.channel_id) ??
+                      `Channel #${video.channel_id}`)
+                    : "Deleted channel";
+                const live = liveProgressByVideoId.get(video.id);
+                const dlStatus = live?.status ?? video.download_status;
+                const progressPct =
+                  live?.progress_percent ?? video.download_progress;
 
-                  return (
-                    <tr
-                      key={video.id}
-                      className="border-b border-border transition-colors last:border-0 hover:bg-muted/20"
-                    >
-                      <td className="px-3 py-3">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${video.title}`}
-                          checked={selectedIds.has(video.id)}
-                          onChange={() => toggleSelectOne(video.id)}
-                          className="h-4 w-4 rounded border-border"
+                return (
+                  <tr
+                    key={video.id}
+                    data-excluded={video.is_excluded ? "true" : "false"}
+                    className={
+                      video.is_excluded
+                        ? "align-top bg-muted/40 text-muted-foreground opacity-80"
+                        : "align-top transition-colors hover:bg-muted/20"
+                    }
+                  >
+                    <td className="px-2 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${video.title}`}
+                        disabled={video.is_excluded}
+                        checked={
+                          !video.is_excluded && selectedVideosMap.has(video.id)
+                        }
+                        onChange={() => toggleSelectOne(video)}
+                        className="mt-1 h-4 w-4 rounded border-border disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </td>
+                    <td className="px-1.5 py-2">
+                      {video.thumbnail_url ? (
+                        <img
+                          src={video.thumbnail_url}
+                          alt={`Thumbnail for ${video.title}`}
+                          className="h-8 w-14 rounded object-cover"
+                          loading="lazy"
                         />
-                      </td>
-                      <td className="px-4 py-3">
-                        {video.thumbnail_url ? (
-                          <img
-                            src={video.thumbnail_url}
-                            alt={`Thumbnail for ${video.title}`}
-                            className="h-10 w-16 rounded object-cover"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div
-                            className="flex h-10 w-16 items-center justify-center rounded bg-muted"
-                            aria-hidden="true"
-                          >
-                            <Play size={16} className="text-muted-foreground" />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="line-clamp-2 max-w-xs font-medium">
-                          {video.title}
-                        </p>
-                        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span>{video.youtube_video_id}</span>
-                          <a
-                            href={video.video_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            aria-label={`Watch ${video.title} on YouTube`}
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline"
-                          >
-                            <ExternalLink size={12} aria-hidden="true" />
-                            Watch
-                          </a>
+                      ) : (
+                        <div
+                          className="flex h-8 w-14 items-center justify-center rounded bg-muted"
+                          aria-hidden="true"
+                        >
+                          <Play size={14} className="text-muted-foreground" />
                         </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {channelLabel}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                        {formatDuration(video.duration_seconds)}
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {formatIST(video.published_at)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="space-y-1">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getDownloadBadgeClass(dlStatus)}`}
-                          >
-                            {dlStatus}
-                          </span>
-
-                          {dlStatus === "downloading" && (
-                            <div className="w-40 space-y-1">
-                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                                <div
-                                  className="h-full bg-blue-600 transition-all"
-                                  style={{
-                                    width: `${Math.min(100, Math.max(0, progressPct))}%`,
-                                  }}
-                                />
-                              </div>
-                              <p className="text-xs tabular-nums text-muted-foreground">
-                                {progressPct.toFixed(1)}%
-                                {live?.is_live &&
-                                  live.speed_bytes_per_sec != null &&
-                                  ` · ${formatSpeed(live.speed_bytes_per_sec)}`}
-                                {live?.is_live &&
-                                  live.eta_seconds != null &&
-                                  ` · ETA ${formatDuration(live.eta_seconds)}`}
-                              </p>
-                              {(live?.downloaded_bytes ??
-                                video.downloaded_bytes) > 0 && (
-                                <p className="text-xs tabular-nums text-muted-foreground">
-                                  {formatBytes(
-                                    live?.downloaded_bytes ??
-                                      video.downloaded_bytes,
-                                  )}
-                                  {(live?.total_bytes ?? video.total_bytes) !=
-                                    null &&
-                                    ` / ${formatBytes((live?.total_bytes ?? video.total_bytes) as number)}`}
-                                </p>
-                              )}
-                            </div>
+                      )}
+                    </td>
+                    <td className="max-w-[200px] px-2 py-2">
+                      <p className="line-clamp-2 text-xs font-medium leading-snug">
+                        {video.title}
+                      </p>
+                      {video.is_excluded && (
+                        <div
+                          className="mt-1 flex flex-wrap items-center gap-1"
+                          title={
+                            video.excluded_keywords.length > 0
+                              ? `Excluded by keyword(s): ${video.excluded_keywords.join(", ")}`
+                              : "Excluded by keyword"
+                          }
+                        >
+                          <StatusBadge label="Excluded" tone="warning" />
+                          {video.excluded_keywords.length > 0 && (
+                            <span className="truncate text-[11px] text-amber-800">
+                              {video.excluded_keywords.join(", ")}
+                            </span>
                           )}
-
-                          {dlStatus === "downloaded" && (
-                            <p className="text-xs text-muted-foreground">
-                              {video.actual_resolution ?? "Verified"}
-                              {video.file_size_bytes != null &&
-                                ` · ${formatBytes(video.file_size_bytes)}`}
+                        </div>
+                      )}
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span className="font-mono">
+                          {video.youtube_video_id}
+                        </span>
+                        <a
+                          href={video.video_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Watch ${video.title} on YouTube`}
+                          className="inline-flex items-center gap-0.5 text-primary hover:underline"
+                        >
+                          <ExternalLink size={11} aria-hidden="true" />
+                          Watch
+                        </a>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                      {channelLabel}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-xs tabular-nums text-muted-foreground">
+                      {formatDuration(video.duration_seconds)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-2 text-xs text-muted-foreground">
+                      {formatIST(video.published_at)}
+                    </td>
+                    <td className="px-2 py-2">
+                      <div className="space-y-1">
+                        <StatusBadge
+                          label={dlStatus}
+                          tone={DOWNLOAD_STATUS_TONE[dlStatus] ?? "neutral"}
+                        />
+                        {dlStatus === "downloading" && (
+                          <ProgressIndicator
+                            className="w-32"
+                            value={progressPct}
+                            ariaLabel={`Download progress for ${video.title}`}
+                            detail={`${progressPct.toFixed(1)}%${
+                              live?.is_live && live.speed_bytes_per_sec != null
+                                ? ` · ${formatSpeed(live.speed_bytes_per_sec)}`
+                                : ""
+                            }${
+                              live?.is_live && live.eta_seconds != null
+                                ? ` · ETA ${formatDuration(live.eta_seconds)}`
+                                : ""
+                            }`}
+                          />
+                        )}
+                        {dlStatus === "downloaded" && (
+                          <p className="whitespace-nowrap text-[11px] text-muted-foreground">
+                            {video.actual_resolution ?? "Verified"}
+                            {video.file_size_bytes != null &&
+                              ` · ${formatBytes(video.file_size_bytes)}`}
+                          </p>
+                        )}
+                        {(dlStatus === "failed" || dlStatus === "cancelled") &&
+                          video.download_error && (
+                            <p
+                              className="max-w-[160px] truncate text-[11px] text-red-700"
+                              title={video.download_error}
+                            >
+                              {video.download_error}
                             </p>
                           )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2">
+                      <ExtractionControls
+                        videoId={video.id}
+                        downloaded={dlStatus === "downloaded"}
+                        interval={extractionInterval}
+                        isExcluded={video.is_excluded}
+                      />
+                    </td>
+                    <td className="px-2 py-2">
+                      <SlideControls
+                        videoId={video.id}
+                        isExcluded={video.is_excluded}
+                      />
+                    </td>
+                    <td className="px-2 py-2 text-right">
+                      <div className="inline-flex items-center justify-end gap-1">
+                        {dlStatus === "pending" && (
+                          <ActionButton
+                            tooltip={
+                              video.is_excluded
+                                ? "Excluded videos cannot be downloaded"
+                                : `Download ${video.title}`
+                            }
+                            ariaLabel={`Download ${video.title}`}
+                            onClick={() => downloadMutation.mutate(video.id)}
+                            disabled={
+                              downloadMutation.isPending || video.is_excluded
+                            }
+                          >
+                            <Download size={12} aria-hidden="true" />
+                            Download
+                          </ActionButton>
+                        )}
+                        {dlStatus === "downloading" && (
+                          <ActionButton
+                            tooltip={`Cancel download for ${video.title}`}
+                            ariaLabel={`Cancel download for ${video.title}`}
+                            onClick={() => cancelMutation.mutate(video.id)}
+                            disabled={cancelMutation.isPending}
+                          >
+                            <XCircle size={12} aria-hidden="true" />
+                            Cancel
+                          </ActionButton>
+                        )}
+                        {(dlStatus === "failed" ||
+                          dlStatus === "cancelled") && (
+                          <ActionButton
+                            tooltip={
+                              video.is_excluded
+                                ? "Excluded videos cannot be retried"
+                                : `Retry download for ${video.title}`
+                            }
+                            ariaLabel={`Retry download for ${video.title}`}
+                            onClick={() => retryMutation.mutate(video.id)}
+                            disabled={
+                              retryMutation.isPending || video.is_excluded
+                            }
+                          >
+                            <RotateCcw size={12} aria-hidden="true" />
+                            Retry
+                          </ActionButton>
+                        )}
+                        {dlStatus === "downloaded" && (
+                          <ActionButton
+                            variant="ghost"
+                            tooltip={`Delete local video for ${video.title}`}
+                            ariaLabel={`Delete local video for ${video.title}`}
+                            onClick={() => setDeleteTarget(video)}
+                            className="text-red-700 hover:bg-red-50 hover:text-red-800"
+                          >
+                            <Trash2 size={12} aria-hidden="true" />
+                            Delete
+                          </ActionButton>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </DataTable>
 
-                          {(dlStatus === "failed" ||
-                            dlStatus === "cancelled") &&
-                            video.download_error && (
-                              <p
-                                className="max-w-[200px] truncate text-xs text-red-700"
-                                title={video.download_error}
-                              >
-                                {video.download_error}
-                              </p>
-                            )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <ExtractionControls
-                          videoId={video.id}
-                          downloaded={dlStatus === "downloaded"}
-                          interval={extractionInterval}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${getStatusBadgeClass(video.processing_status)}`}
-                        >
-                          {video.processing_status}
-                        </span>
-                        <SlideControls videoId={video.id} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          {dlStatus === "pending" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => downloadMutation.mutate(video.id)}
-                              disabled={downloadMutation.isPending}
-                              aria-label={`Download ${video.title}`}
-                            >
-                              <Download size={14} aria-hidden="true" />
-                              Download
-                            </Button>
-                          )}
-                          {dlStatus === "downloading" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => cancelMutation.mutate(video.id)}
-                              disabled={cancelMutation.isPending}
-                              aria-label={`Cancel download for ${video.title}`}
-                            >
-                              <XCircle size={14} aria-hidden="true" />
-                              Cancel
-                            </Button>
-                          )}
-                          {(dlStatus === "failed" ||
-                            dlStatus === "cancelled") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => retryMutation.mutate(video.id)}
-                              disabled={retryMutation.isPending}
-                              aria-label={`Retry download for ${video.title}`}
-                            >
-                              <RotateCcw size={14} aria-hidden="true" />
-                              Retry
-                            </Button>
-                          )}
-                          {dlStatus === "downloaded" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setDeleteTarget(video)}
-                              aria-label={`Delete local video for ${video.title}`}
-                              className="text-red-700 hover:bg-red-50 hover:text-red-800"
-                            >
-                              <Trash2 size={14} aria-hidden="true" />
-                              Delete
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
+          {/* 6. Pagination */}
           {videoList.total_pages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
+            <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground">
+              <span>
                 Page {videoList.page} of {videoList.total_pages} (
                 {videoList.total} videos)
-              </p>
+              </span>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={page <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
@@ -949,6 +920,7 @@ export function VideosPage() {
                 </Button>
                 <Button
                   variant="outline"
+                  size="sm"
                   disabled={page >= videoList.total_pages}
                   onClick={() => setPage((p) => p + 1)}
                 >
@@ -965,8 +937,7 @@ export function VideosPage() {
         />
       )}
 
-      {/* Delete confirmation modal */}
-      <Modal
+      <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete local video file"
         description={
@@ -974,23 +945,14 @@ export function VideosPage() {
             ? `Remove the downloaded file for "${deleteTarget.title}"? The video record will remain in your library and can be re-downloaded later.`
             : undefined
         }
+        confirmLabel="Delete local file"
+        pendingLabel="Deleting…"
+        isPending={deleteLocalMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteLocalMutation.mutate(deleteTarget.id);
+        }}
         onClose={() => setDeleteTarget(null)}
-      >
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            disabled={deleteLocalMutation.isPending}
-            onClick={() => {
-              if (deleteTarget) deleteLocalMutation.mutate(deleteTarget.id);
-            }}
-          >
-            {deleteLocalMutation.isPending ? "Deleting…" : "Delete local file"}
-          </Button>
-        </div>
-      </Modal>
-    </div>
+      />
+    </PageContainer>
   );
 }

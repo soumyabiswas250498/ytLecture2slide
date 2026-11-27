@@ -60,6 +60,8 @@ export const videoSchema = z.object({
   download_error: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  is_excluded: z.boolean().optional().default(false),
+  excluded_keywords: z.array(z.string()).optional().default([]),
 });
 export type Video = z.infer<typeof videoSchema>;
 
@@ -77,6 +79,8 @@ export const videoSummarySchema = z.object({
   pending: z.number(),
   today: z.number(),
   latest_discovery_at: z.string().nullable(),
+  eligible: z.number().optional().default(0),
+  excluded: z.number().optional().default(0),
 });
 export type VideoSummary = z.infer<typeof videoSummarySchema>;
 
@@ -130,11 +134,14 @@ export type BulkDownloadResponse = z.infer<typeof bulkDownloadResponseSchema>;
 // Query params
 // ------------------------------------------------------------------
 
+export type EligibilityFilter = "all" | "eligible" | "excluded";
+
 export interface ListVideosParams {
   search?: string;
   channel_id?: number;
   processing_status?: ProcessingStatus;
   download_status?: DownloadStatus;
+  eligibility?: EligibilityFilter;
   published_after?: string;
   published_before?: string;
   sort_by?: "published_at" | "discovered_at" | "title" | "duration_seconds";
@@ -163,6 +170,8 @@ export function listVideos(
     query.set("processing_status", params.processing_status);
   if (params.download_status)
     query.set("download_status", params.download_status);
+  if (params.eligibility && params.eligibility !== "all")
+    query.set("eligibility", params.eligibility);
   if (params.published_after)
     query.set("published_after", params.published_after);
   if (params.published_before)

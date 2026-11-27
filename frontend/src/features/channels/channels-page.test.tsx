@@ -361,4 +361,55 @@ describe("ChannelsPage", () => {
       "already exists",
     );
   });
+
+  it("renders compact hyperlinks without full URLs and filters with Select", async () => {
+    const user = userEvent.setup();
+    const payload: ChannelListResponse = {
+      items: [makeChannel({ youtube_channel_id: "UC123456" })],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      total_pages: 1,
+      summary: { total: 1, active: 1, inactive: 0 },
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderChannelsPage();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Visit channel")).toBeVisible();
+    expect(within(table).getByText("Watch video")).toBeVisible();
+    expect(
+      within(table).queryByText("https://www.youtube.com/@wbpscstudyhub"),
+    ).not.toBeInTheDocument();
+    expect(within(table).queryByText("UC123456")).not.toBeInTheDocument();
+
+    const statusSelect = screen.getByRole("combobox", { name: "Status" });
+    await user.click(statusSelect);
+    await user.click(screen.getByRole("option", { name: "Inactive" }));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.stringContaining("is_active=false"),
+      expect.anything(),
+    );
+  });
+
+  it("does not render board crop controls on channels", async () => {
+    const payload: ChannelListResponse = {
+      items: [makeChannel()],
+      total: 1,
+      page: 1,
+      page_size: 10,
+      total_pages: 1,
+      summary: { total: 1, active: 1, inactive: 0 },
+    };
+
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(payload)));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderChannelsPage();
+    expect(await screen.findByText("WBPSC Study Hub")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Board crop/i }),
+    ).not.toBeInTheDocument();
+  });
 });

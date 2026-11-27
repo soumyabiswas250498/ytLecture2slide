@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.domain.downloads import VideoNotFoundError
+from app.domain.exclusion import VideoExcludedError
 from app.domain.extraction import ExtractionError, FrameMetadata
 from app.infrastructure.frame_extractor import read_manifest, validate_png
 from app.repositories.extractions import ExtractionState
@@ -61,7 +62,7 @@ def bulk(payload: BulkRequest, jobs: Service) -> BulkResult:
         try:
             jobs.start(video_id, payload.interval_seconds)
             result.started_ids.append(video_id)
-        except (ExtractionError, VideoNotFoundError) as exc:
+        except (ExtractionError, VideoNotFoundError, VideoExcludedError) as exc:
             result.errors.append(BulkOutcome(video_id=video_id, reason=str(exc)))
     return result
 

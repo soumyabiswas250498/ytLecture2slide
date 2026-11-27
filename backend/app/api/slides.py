@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.domain.downloads import VideoNotFoundError
+from app.domain.exclusion import VideoExcludedError
 from app.domain.extraction import ExtractionError
 from app.domain.slides import SlideConfig, SlideState
 from app.services.imaging.pipeline import load_image, read_slide_manifest, resolve_slide_image
@@ -46,7 +47,7 @@ def bulk(payload: BulkRequest, jobs: Service) -> dict[str, object]:
         try:
             jobs.start(video_id, payload.configuration, reprocess=payload.reprocess)
             started.append(video_id)
-        except (ExtractionError, VideoNotFoundError) as exc:
+        except (ExtractionError, VideoNotFoundError, VideoExcludedError) as exc:
             errors.append({"video_id": video_id, "reason": str(exc)})
     return {"started_ids": started, "errors": errors}
 

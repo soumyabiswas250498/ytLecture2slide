@@ -28,6 +28,7 @@ from app.domain.downloads import (
     VideoDownloaderAdapter,
     VideoNotFoundError,
 )
+from app.domain.exclusion import VideoExcludedError, format_exclusion_reason
 from app.domain.videos import VideoEntity
 from app.infrastructure.ytdlp_downloader import sanitize_youtube_video_id
 from app.repositories.videos import VideoRepository
@@ -82,6 +83,19 @@ class VideoDownloadService:
         for video in recoverable:
             if self._shutting_down:
                 break
+            if video.is_excluded:
+                next_status = (
+                    DownloadStatus.FAILED
+                    if video.download_status == DownloadStatus.DOWNLOADING
+                    else video.download_status
+                )
+                self._repo.update_download_state(
+                    video.id,
+                    download_status=next_status,
+                    download_requested=False,
+                    download_error=format_exclusion_reason(video.excluded_keywords),
+                )
+                continue
             if video.download_retry_count >= self._settings.download_retry_attempts:
                 self._repo.update_download_state(
                     video.id,
@@ -159,6 +173,11 @@ class VideoDownloadService:
         video = self._repo.get_by_id(video_id)
         if video is None:
             raise VideoNotFoundError(f"Video {video_id} not found.")
+        if video.is_excluded:
+            raise VideoExcludedError(
+                format_exclusion_reason(video.excluded_keywords),
+                video.excluded_keywords,
+            )
 
         self._check_disk_space()
 
@@ -216,7 +235,11 @@ class VideoDownloadService:
             try:
                 self.start_download(video_id)
                 summary.started_ids.append(video_id)
-            except (DownloadAlreadyInProgressError, DownloadAlreadyCompletedError) as exc:
+            except (
+                DownloadAlreadyInProgressError,
+                DownloadAlreadyCompletedError,
+                VideoExcludedError,
+            ) as exc:
                 summary.skipped.append({"video_id": video_id, "reason": str(exc)})
             except DownloadError as exc:
                 summary.errors.append({"video_id": video_id, "reason": str(exc)})
@@ -232,6 +255,11 @@ class VideoDownloadService:
         video = self._repo.get_by_id(video_id)
         if video is None:
             raise VideoNotFoundError(f"Video {video_id} not found.")
+        if video.is_excluded:
+            raise VideoExcludedError(
+                format_exclusion_reason(video.excluded_keywords),
+                video.excluded_keywords,
+            )
 
         return DownloadProgress(
             video_id=video.id,
@@ -293,6 +321,11 @@ class VideoDownloadService:
         video = self._repo.get_by_id(video_id)
         if video is None:
             raise VideoNotFoundError(f"Video {video_id} not found.")
+        if video.is_excluded:
+            raise VideoExcludedError(
+                format_exclusion_reason(video.excluded_keywords),
+                video.excluded_keywords,
+            )
 
         retryable = {
             DownloadStatus.FAILED,
@@ -321,6 +354,11 @@ class VideoDownloadService:
         video = self._repo.get_by_id(video_id)
         if video is None:
             raise VideoNotFoundError(f"Video {video_id} not found.")
+        if video.is_excluded:
+            raise VideoExcludedError(
+                format_exclusion_reason(video.excluded_keywords),
+                video.excluded_keywords,
+            )
 
         with self._lock:
             if video_id in self._active_videos:

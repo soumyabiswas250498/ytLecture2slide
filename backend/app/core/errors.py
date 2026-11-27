@@ -20,6 +20,7 @@ from app.domain.downloads import (
     InvalidDownloadStateError,
     VideoNotFoundError,
 )
+from app.domain.exclusion import VideoExcludedError
 from app.domain.extraction import ExtractionConflict, ExtractionError
 from app.domain.videos import (
     DiscoveryAlreadyRunningError,
@@ -91,6 +92,10 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(VideoNotFoundError)
     async def video_not_found(request: Request, exc: VideoNotFoundError) -> JSONResponse:
         return error_response(404, "video_not_found", str(exc))
+
+    @app.exception_handler(VideoExcludedError)
+    async def video_excluded(request: Request, exc: VideoExcludedError) -> JSONResponse:
+        return error_response(409, "video_excluded", str(exc))
 
     @app.exception_handler(DownloadAlreadyInProgressError)
     async def download_already_in_progress(

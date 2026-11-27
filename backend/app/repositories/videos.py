@@ -1,14 +1,17 @@
 """Repository for video records — data-access layer only, no business logic."""
 
+import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from math import ceil
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, func, inspect, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import InstrumentedAttribute, Session, sessionmaker
 
 from app.domain.downloads import DownloadStatus
+from app.domain.exclusion import ExclusionMatchResult
 from app.domain.videos import (
     LivestreamStatus,
     ProcessingStatus,
@@ -21,6 +24,16 @@ from app.infrastructure.models import VideoRecord, utc_now
 
 def _ensure_utc(value: datetime) -> datetime:
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _parse_excluded_keywords(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    return [str(item) for item in parsed] if isinstance(parsed, list) else []
 
 
 def _to_entity(record: VideoRecord) -> VideoEntity:
@@ -60,6 +73,8 @@ def _to_entity(record: VideoRecord) -> VideoEntity:
         download_error=record.download_error,
         created_at=_ensure_utc(record.created_at),
         updated_at=_ensure_utc(record.updated_at),
+        is_excluded=record.is_excluded,
+        excluded_keywords=_parse_excluded_keywords(record.matched_exclusion_keywords),
     )
 
 
@@ -86,6 +101,8 @@ class VideoRepository:
         published_at: datetime,
         livestream_status: LivestreamStatus,
         discovered_at: datetime,
+        is_excluded: bool = False,
+        excluded_keywords: list[str] | None = None,
     ) -> tuple[VideoEntity, bool]:
         """Insert a new video or skip if youtube_video_id already exists.
 
@@ -118,6 +135,10 @@ class VideoRepository:
                 total_bytes=None,
                 download_requested=False,
                 download_retry_count=0,
+                is_excluded=is_excluded,
+                matched_exclusion_keywords=(
+                    json.dumps(excluded_keywords, ensure_ascii=False) if excluded_keywords else None
+                ),
                 created_at=now,
                 updated_at=now,
             )
@@ -155,6 +176,7 @@ class VideoRepository:
         channel_id: int | None = None,
         processing_status: ProcessingStatus | None = None,
         download_status: DownloadStatus | None = None,
+        eligibility: Literal["all", "eligible", "excluded"] = "all",
         published_after: datetime | None = None,
         published_before: datetime | None = None,
         sort_by: str = "published_at",
@@ -168,6 +190,7 @@ class VideoRepository:
                 channel_id=channel_id,
                 processing_status=processing_status,
                 download_status=download_status,
+                eligibility=eligibility,
                 published_after=published_after,
                 published_before=published_before,
             )
@@ -207,6 +230,8 @@ class VideoRepository:
                     ),
                     func.count(VideoRecord.id).filter(VideoRecord.discovered_at >= today_start),
                     func.max(VideoRecord.discovered_at),
+                    func.count(VideoRecord.id).filter(VideoRecord.is_excluded.is_(False)),
+                    func.count(VideoRecord.id).filter(VideoRecord.is_excluded.is_(True)),
                 )
             ).one()
             total = int(row[0] or 0)
@@ -214,12 +239,41 @@ class VideoRepository:
             today = int(row[2] or 0)
             latest_raw: datetime | None = row[3]
             latest = _ensure_utc(latest_raw) if latest_raw is not None else None
+            eligible = int(row[4] or 0)
+            excluded = int(row[5] or 0)
             return VideoSummary(
                 total=total,
                 pending=pending,
                 today=today,
                 latest_discovery_at=latest,
+                eligible=eligible,
+                excluded=excluded,
             )
+
+    def reevaluate_exclusions(self, matcher: Callable[[str], ExclusionMatchResult]) -> int:
+        """Re-classify all stored videos against updated exclusion keywords."""
+        with self._sessions() as session:
+            records = session.scalars(select(VideoRecord)).all()
+            updated = 0
+            now = utc_now()
+            for record in records:
+                result = matcher(record.title)
+                new_json = (
+                    json.dumps(result.matched_keywords, ensure_ascii=False)
+                    if result.matched_keywords
+                    else None
+                )
+                if (
+                    record.is_excluded != result.excluded
+                    or record.matched_exclusion_keywords != new_json
+                ):
+                    record.is_excluded = result.excluded
+                    record.matched_exclusion_keywords = new_json
+                    record.updated_at = now
+                    updated += 1
+            if updated:
+                session.commit()
+            return updated
 
     def update_download_state(
         self,
@@ -336,6 +390,7 @@ class VideoRepository:
         channel_id: int | None,
         processing_status: ProcessingStatus | None,
         download_status: DownloadStatus | None,
+        eligibility: Literal["all", "eligible", "excluded"],
         published_after: datetime | None,
         published_before: datetime | None,
     ) -> list[ColumnElement[bool]]:
@@ -350,6 +405,10 @@ class VideoRepository:
             filters.append(VideoRecord.processing_status == processing_status.value)
         if download_status is not None:
             filters.append(VideoRecord.download_status == download_status.value)
+        if eligibility == "eligible":
+            filters.append(VideoRecord.is_excluded.is_(False))
+        elif eligibility == "excluded":
+            filters.append(VideoRecord.is_excluded.is_(True))
         if published_after is not None:
             filters.append(VideoRecord.published_at >= published_after)
         if published_before is not None:

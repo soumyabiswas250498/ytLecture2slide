@@ -34,9 +34,10 @@
     min-width: 320px;
   }
   h1 {
-    font-size: clamp(1.8rem, 3vw, 2.25rem);
+    font-size: clamp(1.35rem, 2vw, 1.65rem);
     font-weight: 650;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
   }
   button,
   a {

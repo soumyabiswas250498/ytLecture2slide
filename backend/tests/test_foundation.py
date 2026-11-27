@@ -164,6 +164,7 @@ def test_migration_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
             "extractions",
             "slide_processing",
             "channel_board_profiles",
+            "app_settings",
         }
 
 

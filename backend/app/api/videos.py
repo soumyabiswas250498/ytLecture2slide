@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import JSONResponse
@@ -54,11 +54,13 @@ def _get_discovery_service(request: Request) -> DiscoveryService:
     )
     channel_repo = ChannelRepository(request.app.state.sessions)
     video_repo = VideoRepository(request.app.state.sessions)
+    exclusion_service = getattr(request.app.state, "exclusion_service", None)
     return DiscoveryService(
         youtube_client=yt_client,
         channel_repo=channel_repo,
         video_repo=video_repo,
         settings=settings,
+        exclusion_service=exclusion_service,
     )
 
 
@@ -102,6 +104,8 @@ class VideoResponse(BaseModel):
     download_error: str | None
     created_at: datetime
     updated_at: datetime
+    is_excluded: bool = False
+    excluded_keywords: list[str] = []
 
     @classmethod
     def from_entity(cls, entity: VideoEntity) -> "VideoResponse":
@@ -133,6 +137,8 @@ class VideoResponse(BaseModel):
             download_error=entity.download_error,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
+            is_excluded=entity.is_excluded,
+            excluded_keywords=entity.excluded_keywords,
         )
 
 
@@ -214,6 +220,8 @@ class VideoSummaryResponse(BaseModel):
     pending: int
     today: int
     latest_discovery_at: datetime | None
+    eligible: int = 0
+    excluded: int = 0
 
 
 class DiscoveryRunResponse(BaseModel):
@@ -265,6 +273,8 @@ def get_video_summary(repo: VideoRepoDep) -> VideoSummaryResponse:
         pending=summary.pending,
         today=summary.today,
         latest_discovery_at=summary.latest_discovery_at,
+        eligible=summary.eligible,
+        excluded=summary.excluded,
     )
 
 
@@ -275,6 +285,7 @@ def list_videos(
     channel_id: int | None = Query(default=None),
     processing_status: ProcessingStatus | None = Query(default=None),  # noqa: B008
     download_status: DownloadStatus | None = Query(default=None),  # noqa: B008
+    eligibility: Literal["all", "eligible", "excluded"] = Query(default="all"),
     published_after: datetime | None = Query(default=None),  # noqa: B008
     published_before: datetime | None = Query(default=None),  # noqa: B008
     sort_by: str = Query(  # noqa: B008
@@ -290,6 +301,7 @@ def list_videos(
         channel_id=channel_id,
         processing_status=processing_status,
         download_status=download_status,
+        eligibility=eligibility,
         published_after=published_after,
         published_before=published_before,
         sort_by=sort_by,

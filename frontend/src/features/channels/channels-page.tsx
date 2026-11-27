@@ -6,17 +6,26 @@ import {
   FileSpreadsheet,
   Pencil,
   Plus,
+  Power,
   Search,
   Trash2,
   Upload,
 } from "lucide-react";
+import { ActionButton } from "@/components/shared/action-button";
+import { DataTable } from "@/components/shared/data-table";
+import { FilterToolbar } from "@/components/shared/filter-toolbar";
+import { NotificationAlert } from "@/components/shared/notification-alert";
+import { PageContainer } from "@/components/shared/page-container";
+import { PageHeader } from "@/components/shared/page-header";
+import { StatCard } from "@/components/shared/stat-card";
 import {
   EmptyState,
   ErrorState,
   LoadingState,
 } from "@/components/shared/states";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
-import { ChannelBoardProfileModal } from "@/features/channels/channel-board-profile-modal";
+import { Select, type SelectOption } from "@/components/ui/select";
 import { ChannelDeleteModal } from "@/features/channels/channel-delete-modal";
 import { ChannelFormModal } from "@/features/channels/channel-form-modal";
 import { ChannelImportModal } from "@/features/channels/channel-import-modal";
@@ -37,6 +46,12 @@ import {
 
 type StatusFilter = "all" | "active" | "inactive";
 const PAGE_SIZE = 10;
+
+const STATUS_OPTIONS: readonly SelectOption<StatusFilter>[] = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
 
 function triggerCsvDownload(filename: string, content: string): void {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
@@ -63,7 +78,6 @@ export function ChannelsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
-  const [profileChannel, setProfileChannel] = useState<Channel | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
@@ -241,362 +255,323 @@ export function ChannelsPage() {
   const hasFilters = Boolean(searchInput.trim()) || statusFilter !== "all";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="eyebrow">CHANNEL REGISTRY</p>
-          <h1>Channels</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Register YouTube channels, configure search keywords, and manage
-            active discovery targets.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              void handleDownloadTemplate();
-            }}
-          >
-            <FileSpreadsheet size={16} aria-hidden="true" />
-            Download CSV template
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isExporting || summary.total === 0}
-            onClick={() => {
-              void handleExportCsv();
-            }}
-          >
-            <Download size={16} aria-hidden="true" />
-            {isExporting ? "Exporting…" : "Export CSV"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setImportError(null);
-              setImportResult(null);
-              setImportOpen(true);
-            }}
-          >
-            <Upload size={16} aria-hidden="true" />
-            Import CSV
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => {
-              setEditingChannel(null);
-              setFormError(null);
-              setFormOpen(true);
-            }}
-          >
-            <Plus size={16} aria-hidden="true" />
-            Add channel
-          </Button>
-        </div>
-      </div>
-
-      <section
-        aria-label="Channel summary"
-        className="grid gap-4 sm:grid-cols-3"
-      >
-        <div className="rounded-xl border border-border bg-white p-5">
-          <p className="eyebrow">TOTAL CHANNELS</p>
-          <p className="mt-2 text-3xl font-semibold">{summary.total}</p>
-        </div>
-        <div className="rounded-xl border border-border bg-white p-5">
-          <p className="eyebrow">ACTIVE CHANNELS</p>
-          <p className="mt-2 text-3xl font-semibold text-emerald-700">
-            {summary.active}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border bg-white p-5">
-          <p className="eyebrow">INACTIVE CHANNELS</p>
-          <p className="mt-2 text-3xl font-semibold text-muted-foreground">
-            {summary.inactive}
-          </p>
-        </div>
-      </section>
-
-      {feedback && (
-        <div
-          role={feedback.type === "error" ? "alert" : "status"}
-          className={`flex items-center justify-between gap-4 rounded-xl border px-4 py-3 text-sm ${
-            feedback.type === "error"
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
-          }`}
-        >
-          <span>{feedback.message}</span>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            className="text-xs font-semibold underline"
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      <section className="rounded-xl border border-border bg-white p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[220px] flex-1">
-            <label htmlFor="channel-search" className="sr-only">
-              Search channels by name or keyword
-            </label>
-            <Search
-              size={16}
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-            />
-            <input
-              id="channel-search"
-              type="search"
-              value={searchInput}
-              onChange={(event) => {
-                setSearchInput(event.target.value);
-                setPage(1);
-              }}
-              placeholder="Search by channel name or keyword…"
-              className="w-full rounded-md border border-border py-2 pr-3 pl-9 text-sm focus:border-primary focus:outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <label htmlFor="status-filter" className="text-sm font-medium">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value as StatusFilter);
-                setPage(1);
-              }}
-              className="rounded-md border border-border bg-white px-3 py-2 text-sm focus:border-primary focus:outline-none"
-            >
-              <option value="all">All</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-
-          {hasFilters && (
+    <PageContainer>
+      <PageHeader
+        eyebrow="CHANNEL REGISTRY"
+        title="Channels"
+        description="Register YouTube channels, configure search keywords, and manage active discovery targets."
+        actions={
+          <>
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => {
-                setSearchInput("");
-                setStatusFilter("all");
-                setPage(1);
+                void handleDownloadTemplate();
               }}
             >
-              Clear filters
+              <FileSpreadsheet size={14} aria-hidden="true" />
+              CSV template
             </Button>
-          )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isExporting || summary.total === 0}
+              onClick={() => {
+                void handleExportCsv();
+              }}
+            >
+              <Download size={14} aria-hidden="true" />
+              {isExporting ? "Exporting…" : "Export CSV"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setImportError(null);
+                setImportResult(null);
+                setImportOpen(true);
+              }}
+            >
+              <Upload size={14} aria-hidden="true" />
+              Import CSV
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                setEditingChannel(null);
+                setFormError(null);
+                setFormOpen(true);
+              }}
+            >
+              <Plus size={14} aria-hidden="true" />
+              Add channel
+            </Button>
+          </>
+        }
+      />
+
+      <section aria-label="Channel summary" className="grid grid-cols-3 gap-3">
+        <StatCard label="Total channels" value={summary.total} />
+        <StatCard
+          label="Active channels"
+          value={summary.active}
+          tone="success"
+        />
+        <StatCard
+          label="Inactive channels"
+          value={summary.inactive}
+          tone="muted"
+        />
+      </section>
+
+      {feedback && (
+        <NotificationAlert
+          tone={feedback.type}
+          summary={feedback.message}
+          onDismiss={() => setFeedback(null)}
+        />
+      )}
+
+      <FilterToolbar ariaLabel="Channel filters">
+        <div className="relative min-w-[220px] flex-1">
+          <label htmlFor="channel-search" className="sr-only">
+            Search channels by name or keyword
+          </label>
+          <Search
+            size={15}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            id="channel-search"
+            type="search"
+            value={searchInput}
+            onChange={(event) => {
+              setSearchInput(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by channel name or keyword…"
+            className="h-9 w-full rounded-md border border-border bg-white py-1.5 pr-3 pl-8 text-sm focus:border-primary focus:outline-none"
+          />
         </div>
 
-        <div className="mt-5">
-          {channelsQuery.isPending ? (
-            <LoadingState message="Loading channels…" />
-          ) : channelsQuery.isError ? (
-            <ErrorState
-              message={channelsQuery.error.message}
-              onRetry={() => {
-                void channelsQuery.refetch();
-              }}
-            />
-          ) : items.length === 0 ? (
-            <EmptyState
-              title={
-                hasFilters
-                  ? "No channels match your filters"
-                  : "No channels registered yet"
-              }
-              description={
-                hasFilters
-                  ? "Try adjusting your search query or status filter."
-                  : "Add a YouTube channel or import an existing CSV list to get started."
-              }
-            />
-          ) : (
-            <div className="space-y-4">
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-xs text-muted-foreground uppercase">
-                      <th className="py-3 pr-4 font-semibold">Channel name</th>
-                      <th className="py-3 pr-4 font-semibold">Channel URL</th>
-                      <th className="py-3 pr-4 font-semibold">Sample video</th>
-                      <th className="py-3 pr-4 font-semibold">
-                        Search keyword
-                      </th>
-                      <th className="py-3 pr-4 font-semibold">Status</th>
-                      <th className="py-3 text-right font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {items.map((channel) => (
-                      <tr key={channel.id} className="align-top">
-                        <td className="py-3.5 pr-4">
-                          <div className="font-medium text-foreground">
-                            {channel.name}
-                          </div>
-                          {channel.youtube_channel_id && (
-                            <div className="mt-0.5 font-mono text-xs text-muted-foreground">
-                              {channel.youtube_channel_id}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          <a
-                            href={channel.channel_url}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1 break-all text-primary underline-offset-2 hover:underline"
-                          >
-                            <span>{channel.channel_url}</span>
-                            <ExternalLink
-                              size={13}
-                              aria-hidden="true"
-                              className="shrink-0"
-                            />
-                          </a>
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          {channel.sample_video_url ? (
-                            <a
-                              href={channel.sample_video_url}
-                              target="_blank"
-                              rel="noreferrer noopener"
-                              className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline"
-                            >
-                              <span>Sample video</span>
-                              <ExternalLink size={13} aria-hidden="true" />
-                            </a>
-                          ) : (
-                            <span className="text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-xs font-medium">
-                            {channel.search_keyword}
-                          </span>
-                        </td>
-                        <td className="py-3.5 pr-4">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                              channel.is_active
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-stone-200 text-stone-700"
-                            }`}
-                          >
-                            {channel.is_active ? "Active" : "Inactive"}
-                          </span>
-                        </td>
-                        <td className="py-3.5 text-right">
-                          <div className="inline-flex flex-wrap justify-end gap-1.5">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              disabled={toggleStatusMutation.isPending}
-                              onClick={() => {
-                                toggleStatusMutation.mutate({
-                                  channelId: channel.id,
-                                  isActive: !channel.is_active,
-                                });
-                              }}
-                            >
-                              {channel.is_active ? "Disable" : "Enable"}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-label={`Board crop ${channel.name}`}
-                              onClick={() => setProfileChannel(channel)}
-                            >
-                              Board crop
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-label={`Edit ${channel.name}`}
-                              onClick={() => {
-                                setEditingChannel(channel);
-                                setFormError(null);
-                                setFormOpen(true);
-                              }}
-                            >
-                              <Pencil size={14} aria-hidden="true" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              aria-label={`Delete ${channel.name}`}
-                              className="text-red-700 hover:bg-red-50"
-                              onClick={() => {
-                                setDeleteError(null);
-                                setDeletingChannel(channel);
-                              }}
-                            >
-                              <Trash2 size={14} aria-hidden="true" />
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="status-filter"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Status
+          </label>
+          <Select
+            id="status-filter"
+            ariaLabel="Status"
+            value={statusFilter}
+            options={STATUS_OPTIONS}
+            onValueChange={(val) => {
+              setStatusFilter(val);
+              setPage(1);
+            }}
+            className="w-36"
+          />
+        </div>
 
-              {channelsQuery.data && channelsQuery.data.total_pages > 1 && (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-xs text-muted-foreground">
-                  <span>
-                    Page {channelsQuery.data.page} of{" "}
-                    {channelsQuery.data.total_pages} ({channelsQuery.data.total}{" "}
-                    matching)
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={page <= 1}
-                      onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+        {hasFilters && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setSearchInput("");
+              setStatusFilter("all");
+              setPage(1);
+            }}
+          >
+            Clear filters
+          </Button>
+        )}
+      </FilterToolbar>
+
+      {channelsQuery.isPending ? (
+        <LoadingState message="Loading channels…" />
+      ) : channelsQuery.isError ? (
+        <ErrorState
+          message={channelsQuery.error.message}
+          onRetry={() => {
+            void channelsQuery.refetch();
+          }}
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title={
+            hasFilters
+              ? "No channels match your filters"
+              : "No channels registered yet"
+          }
+          description={
+            hasFilters
+              ? "Try adjusting your search query or status filter."
+              : "Add a YouTube channel or import an existing CSV list to get started."
+          }
+        />
+      ) : (
+        <div className="space-y-3">
+          <DataTable>
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground uppercase">
+                <th className="px-3 py-2.5 font-semibold">Channel name</th>
+                <th className="px-3 py-2.5 font-semibold">Channel link</th>
+                <th className="px-3 py-2.5 font-semibold">Sample video</th>
+                <th className="px-3 py-2.5 font-semibold">Search keyword</th>
+                <th className="px-3 py-2.5 font-semibold">Status</th>
+                <th className="px-3 py-2.5 text-right font-semibold">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {items.map((channel) => (
+                <tr
+                  key={channel.id}
+                  className="transition-colors hover:bg-muted/20"
+                >
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {channel.name}
+                  </td>
+                  <td className="px-3 py-2">
+                    <a
+                      href={channel.channel_url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      aria-label={`Visit ${channel.name} channel`}
+                      title={channel.channel_url}
+                      className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary underline-offset-2 hover:underline"
                     >
-                      Previous
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={page >= channelsQuery.data.total_pages}
-                      onClick={() => setPage((prev) => prev + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
-              )}
+                      <span>Visit channel</span>
+                      <ExternalLink
+                        size={12}
+                        aria-hidden="true"
+                        className="shrink-0"
+                      />
+                    </a>
+                  </td>
+                  <td className="px-3 py-2">
+                    {channel.sample_video_url ? (
+                      <a
+                        href={channel.sample_video_url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        aria-label={`Watch sample video for ${channel.name}`}
+                        title={channel.sample_video_url}
+                        className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        <span>Watch video</span>
+                        <ExternalLink
+                          size={12}
+                          aria-hidden="true"
+                          className="shrink-0"
+                        />
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-block rounded bg-muted px-2 py-0.5 text-xs font-medium">
+                      {channel.search_keyword}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <StatusBadge
+                      label={channel.is_active ? "Active" : "Inactive"}
+                      tone={channel.is_active ? "success" : "neutral"}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <div className="inline-flex flex-nowrap items-center justify-end gap-1">
+                      <ActionButton
+                        tooltip={
+                          channel.is_active
+                            ? `Disable ${channel.name}`
+                            : `Enable ${channel.name}`
+                        }
+                        ariaLabel={channel.is_active ? "Disable" : "Enable"}
+                        disabled={toggleStatusMutation.isPending}
+                        onClick={() => {
+                          toggleStatusMutation.mutate({
+                            channelId: channel.id,
+                            isActive: !channel.is_active,
+                          });
+                        }}
+                      >
+                        <Power size={12} aria-hidden="true" />
+                        {channel.is_active ? "Disable" : "Enable"}
+                      </ActionButton>
+                      <ActionButton
+                        tooltip={`Edit ${channel.name}`}
+                        ariaLabel={`Edit ${channel.name}`}
+                        onClick={() => {
+                          setEditingChannel(channel);
+                          setFormError(null);
+                          setFormOpen(true);
+                        }}
+                      >
+                        <Pencil size={12} aria-hidden="true" />
+                        Edit
+                      </ActionButton>
+                      <ActionButton
+                        tooltip={`Delete ${channel.name}`}
+                        ariaLabel={`Delete ${channel.name}`}
+                        className="text-red-700 hover:bg-red-50"
+                        onClick={() => {
+                          setDeleteError(null);
+                          setDeletingChannel(channel);
+                        }}
+                      >
+                        <Trash2 size={12} aria-hidden="true" />
+                        Delete
+                      </ActionButton>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+
+          {channelsQuery.data && channelsQuery.data.total_pages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-1 text-xs text-muted-foreground">
+              <span>
+                Page {channelsQuery.data.page} of{" "}
+                {channelsQuery.data.total_pages} ({channelsQuery.data.total}{" "}
+                matching)
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= channelsQuery.data.total_pages}
+                  onClick={() => setPage((prev) => prev + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </div>
-      </section>
+      )}
 
       <ChannelFormModal
         open={formOpen}
@@ -631,11 +606,6 @@ export function ChannelsPage() {
         }}
       />
 
-      <ChannelBoardProfileModal
-        channel={profileChannel}
-        onClose={() => setProfileChannel(null)}
-      />
-
       <ChannelImportModal
         open={importOpen}
         isImporting={importMutation.isPending}
@@ -650,6 +620,6 @@ export function ChannelsPage() {
         }}
         onDownloadTemplate={handleDownloadTemplate}
       />
-    </div>
+    </PageContainer>
   );
 }

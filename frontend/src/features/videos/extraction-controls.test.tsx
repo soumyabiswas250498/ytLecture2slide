@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as api from "@/services/extractions";
-import { ExtractionControls, ExtractionToolbar } from "./extraction-controls";
+import { ExtractionControls } from "./extraction-controls";
 import { FramePreview } from "./frame-preview";
 
 vi.mock("@/services/extractions");
@@ -67,8 +67,11 @@ describe("Frame extraction controls", () => {
       progress: 40,
     });
     render(<ExtractionControls videoId={1} downloaded />, { wrapper });
-    expect(await screen.findByText("2 / 5 frames")).toBeVisible();
-    expect(screen.getByRole("progressbar")).toHaveAttribute("value", "40");
+    expect(await screen.findByText("2 / 5")).toBeVisible();
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "40",
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Cancel extraction" }),
     );
@@ -97,26 +100,17 @@ describe("Frame extraction controls", () => {
     );
     expect(api.deleteFrames).toHaveBeenCalledWith(1);
   });
-  it("uses configured defaults and reports bulk per-video failures", async () => {
-    vi.mocked(api.extractSelected).mockResolvedValue({
-      started_ids: [1],
-      errors: [{ video_id: 2, reason: "Source unavailable" }],
+  it("renders preview button when manifest exists", async () => {
+    vi.mocked(api.getExtraction).mockResolvedValue({
+      ...state,
+      status: "extracted",
+      frame_count: 3,
+      expected_count: 3,
+      manifest_path: "/frames/manifest.json",
     });
-    render(
-      <ExtractionToolbar
-        selectedIds={[1, 2]}
-        interval={undefined}
-        setInterval={vi.fn()}
-      />,
-      { wrapper },
-    );
-    await waitFor(() => expect(screen.getByRole("spinbutton")).toHaveValue(60));
-    await userEvent.click(
-      screen.getByRole("button", { name: "Extract selected frames" }),
-    );
-    expect(api.extractSelected).toHaveBeenCalledWith([1, 2], undefined);
+    render(<ExtractionControls videoId={1} downloaded />, { wrapper });
     expect(
-      await screen.findByText("Video #2: Source unavailable"),
+      await screen.findByRole("button", { name: "Preview frames" }),
     ).toBeVisible();
   });
   it("paginates lazy images with source timestamps and full-resolution links", async () => {

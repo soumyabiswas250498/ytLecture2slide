@@ -104,7 +104,9 @@ class SlideConfig(BaseModel):
     alignment_max_shift: float = Field(default=2, ge=0, le=10)
 
 
-CropReliability = Literal["manual", "profile_validated", "auto_detected", "full_frame_fallback"]
+CropReliability = Literal[
+    "full_frame", "manual", "profile_validated", "auto_detected", "full_frame_fallback"
+]
 QualityCategory = Literal[
     "clear_original", "improved_original", "reconstructed", "incomplete", "uncertain"
 ]

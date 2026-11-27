@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, CircleCheck } from "lucide-react";
 import { getHealth } from "@/services/api";
+import { PageContainer } from "@/components/shared/page-container";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   EmptyState,
   ErrorState,
@@ -14,44 +16,41 @@ export function Dashboard() {
     queryFn: ({ signal }) => getHealth(signal),
   });
   return (
-    <div className="space-y-8">
-      <div>
-        <p className="eyebrow">YOUR WORKSPACE</p>
-        <h1>Dashboard</h1>
-        <p className="mt-3 text-muted-foreground">
-          A home for your lectures. A foundation for what comes next.
-        </p>
-      </div>
+    <PageContainer>
+      <PageHeader
+        eyebrow="YOUR WORKSPACE"
+        title="Dashboard"
+        description="A home for your lectures. Local video discovery, frame extraction, and smartboard processing."
+      />
       <section
-        className="rounded-2xl bg-primary p-7 text-primary-foreground sm:p-10"
+        className="rounded-xl bg-primary p-5 text-primary-foreground sm:p-6"
         aria-labelledby="intro-title"
       >
-        <span className="rounded-full border border-white/30 px-3 py-1 text-xs">
-          Phase 1 · Project foundation
+        <span className="rounded-full border border-white/30 px-2.5 py-0.5 text-xs">
+          Local-first workspace
         </span>
         <h2
           id="intro-title"
-          className="mt-6 max-w-lg text-3xl font-semibold leading-tight"
+          className="mt-3 max-w-xl text-xl font-semibold leading-snug sm:text-2xl"
         >
-          From long lectures to
-          <br className="hidden sm:block" /> lasting knowledge.
+          From long lectures to lasting knowledge.
         </h2>
-        <p className="mt-4 max-w-lg text-sm leading-6 text-white/75">
-          This workspace is being built to turn educational videos into useful
-          slide PDFs, with all video and image processing running locally.
+        <p className="mt-2 max-w-2xl text-sm leading-5 text-white/80">
+          Turn educational videos into clean slide collections, with all video
+          and image processing running locally on your server.
         </p>
-        <div className="mt-7 flex items-center gap-2 text-xs text-white/75">
-          <ArrowUpRight size={16} aria-hidden="true" /> Processing features
-          arrive in later phases.
+        <div className="mt-4 flex items-center gap-1.5 text-xs text-white/80">
+          <ArrowUpRight size={14} aria-hidden="true" />
+          Manage channels and process lecture videos from the sidebar.
         </div>
       </section>
       <section
-        className="rounded-xl border border-border bg-white p-6"
+        className="rounded-lg border border-border bg-white p-4"
         aria-labelledby="connection-title"
       >
-        <div className="mb-4 flex items-center gap-2">
-          <CircleCheck size={18} aria-hidden="true" />
-          <h2 id="connection-title" className="font-semibold">
+        <div className="mb-3 flex items-center gap-2">
+          <CircleCheck size={16} aria-hidden="true" />
+          <h2 id="connection-title" className="text-sm font-semibold">
             Backend connection
           </h2>
         </div>
@@ -65,7 +64,7 @@ export function Dashboard() {
             }}
           />
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <p role="status" className="text-sm">
               <span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-600" />
               Backend is healthy
@@ -85,8 +84,8 @@ export function Dashboard() {
       </section>
       <EmptyState
         title="Your lecture library starts here"
-        description="Channel management is available in Channels. Video discovery, processing jobs and PDF management arrive in later phases."
+        description="Channel management and video processing are available in Channels and Videos."
       />
-    </div>
+    </PageContainer>
   );
 }

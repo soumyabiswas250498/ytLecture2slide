@@ -29,7 +29,7 @@ from app.domain.slides import (
     SlideQuality,
 )
 from app.infrastructure.frame_extractor import read_manifest, validate_png
-from app.services.imaging.board import Board, Image, isolate_board
+from app.services.imaging.board import Board, Image, full_frame_board
 from app.services.imaging.obstruction import obstruction_masks
 from app.services.imaging.reconstruction import select_best_or_reconstruct
 from app.services.imaging.similarity import compare, compare_visible
@@ -187,7 +187,7 @@ class SlideProcessor:
         for index, frame in enumerate(inputs.frames):
             check()
             original = load_image(frames / frame.filename, config)
-            board = isolate_board(original, config)
+            board = full_frame_board(original)
             init_mask = obstruction_masks([board.image], config)[0]
             obs_frac = float(np.mean(init_mask > 0))
 
@@ -314,16 +314,13 @@ class SlideProcessor:
             if selection.warning:
                 warnings.append(selection.warning)
 
-            # Determine quality indicators and manual review status.
-            grouping_confidence: GroupingConfidence = (
-                "high"
-                if (len(all_images) >= 2 and not rep_board.fallback)
-                else ("medium" if not rep_board.fallback else "low")
-            )
-            manual_review = (
-                selection.quality_category in {"reconstructed", "incomplete", "uncertain"}
-                or rep_board.fallback
-            )
+            # Determine quality indicators and optional review status.
+            grouping_confidence: GroupingConfidence = "high" if len(all_images) >= 2 else "medium"
+            manual_review = selection.quality_category in {
+                "reconstructed",
+                "incomplete",
+                "uncertain",
+            }
             incomplete = selection.quality_category in {"incomplete", "uncertain"}
 
             # Storage optimization: reference immutable Phase 5 primary PNG when unmodified.
@@ -533,7 +530,7 @@ class SlideProcessor:
                     )
                     continue
                 check()
-                candidate = isolate_board(load_image(extra_dir / item.filename, config), config)
+                candidate = full_frame_board(load_image(extra_dir / item.filename, config))
                 m_anc, cand_mask = obstruction_masks([anchor_board.image, candidate.image], config)
                 cmp = compare_visible(anchor_board.image, candidate.image, m_anc, cand_mask, config)
                 if (
@@ -615,12 +612,12 @@ class SlideProcessor:
                 probe_raw = cv2.imread(str(probe_path), cv2.IMREAD_COLOR)
                 if probe_raw is None:
                     continue
-                probe_board = isolate_board(probe_raw.astype(np.uint8), config)
+                probe_board = full_frame_board(probe_raw.astype(np.uint8))
                 h, w = probe_board.image.shape[:2]
                 prev_img = cv2.resize(segments[seg_idx].boards[-1].image, (w, h)).astype(np.uint8)
-                next_img = cv2.resize(
-                    segments[seg_idx + 1].boards[0].image, (w, h)
-                ).astype(np.uint8)
+                next_img = cv2.resize(segments[seg_idx + 1].boards[0].image, (w, h)).astype(
+                    np.uint8
+                )
                 m_prev, m_probe_p = obstruction_masks([prev_img, probe_board.image], config)
                 m_next, m_probe_n = obstruction_masks([next_img, probe_board.image], config)
                 cmp_prev = compare_visible(prev_img, probe_board.image, m_prev, m_probe_p, config)
@@ -653,7 +650,7 @@ class SlideProcessor:
             if not t_start < item.actual_timestamp < t_end:
                 continue
             original = load_image(trans_dir / item.filename, config)
-            board = isolate_board(original, config)
+            board = full_frame_board(original)
             prev_b = segments[seg_idx].boards[-1].image
             next_b = segments[seg_idx + 1].boards[0].image
             m_p, m_bp = obstruction_masks([prev_b, board.image], config)

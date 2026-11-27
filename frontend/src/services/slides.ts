@@ -90,9 +90,14 @@ export function processSelected(ids: number[]) {
     }),
   );
 }
-export function getSlides(id: number, page: number, signal?: AbortSignal) {
+export function getSlides(
+  id: number,
+  page: number,
+  signal?: AbortSignal,
+  pageSize = 6,
+) {
   return apiGet(
-    `videos/${id}/slides?page=${page}&page_size=6`,
+    `videos/${id}/slides?page=${page}&page_size=${pageSize}`,
     slidePageSchema,
     signal,
   );

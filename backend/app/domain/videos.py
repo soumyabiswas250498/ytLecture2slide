@@ -76,6 +76,8 @@ class VideoEntity:
     download_error: str | None
     created_at: datetime
     updated_at: datetime
+    is_excluded: bool = False
+    excluded_keywords: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,8 @@ class VideoSummary:
     pending: int
     today: int
     latest_discovery_at: datetime | None
+    eligible: int = 0
+    excluded: int = 0
 
 
 @dataclass(frozen=True)

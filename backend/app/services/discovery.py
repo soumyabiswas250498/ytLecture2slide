@@ -29,6 +29,7 @@ from app.domain.videos import (
 from app.infrastructure.youtube_client import YouTubeApiClient, next_quota_reset_utc
 from app.repositories.channels import ChannelRepository
 from app.repositories.videos import VideoRepository
+from app.services.exclusion import VideoExclusionService
 
 logger = logging.getLogger("app.discovery")
 
@@ -92,11 +93,13 @@ class DiscoveryService:
         channel_repo: ChannelRepository,
         video_repo: VideoRepository,
         settings: Settings,
+        exclusion_service: VideoExclusionService | None = None,
     ) -> None:
         self._yt = youtube_client
         self._channel_repo = channel_repo
         self._video_repo = video_repo
         self._settings = settings
+        self._exclusion_service = exclusion_service
 
     # ------------------------------------------------------------------
     # Public API
@@ -384,6 +387,11 @@ class DiscoveryService:
             published_at = discovered_at
 
         video_url = f"https://www.youtube.com/watch?v={youtube_video_id}"
+        exclusion = (
+            self._exclusion_service.classify_title(title)
+            if self._exclusion_service is not None
+            else None
+        )
 
         _, created = self._video_repo.create_or_skip(
             channel_id=channel.id,
@@ -396,6 +404,8 @@ class DiscoveryService:
             published_at=published_at,
             livestream_status=livestream_status,
             discovered_at=discovered_at,
+            is_excluded=exclusion.excluded if exclusion is not None else False,
+            excluded_keywords=exclusion.matched_keywords if exclusion is not None else None,
         )
         if created:
             summary.new_videos_added += 1

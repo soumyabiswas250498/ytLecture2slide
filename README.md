@@ -353,3 +353,9 @@ Independent module usage and measured examples are in [the Phase 6 report](docs/
 The default sample budget is consumed chronologically: it does not cover all later segments.
 There is no claim of complete question coverage; slides displayed entirely between primary
 samples may be missed. PDF generation and orchestration remain later phases.
+
+### Exclusion Keywords & Full-Frame Policy
+
+- **Settings (`/settings`)**: Configure global **Exclude Keywords** (English and Bengali, single words or multi-word phrases) via `GET /api/v1/settings/exclusion-keywords` and `PUT /api/v1/settings/exclusion-keywords`. Updating keywords automatically reevaluates all stored videos in SQLite.
+- **Backend Enforcement**: Excluded videos remain visible in `/videos` (filterable via `eligibility=all|eligible|excluded`) for inspection and cleanup, but are blocked (`409 video_excluded`) from individual/bulk downloads, frame extraction, slide processing, retries, and startup pending-job recovery.
+- **Full-Frame Processing**: Slide processing operates on full original video frames without automatic or manual cropping, preserving original resolution and aspect ratio.

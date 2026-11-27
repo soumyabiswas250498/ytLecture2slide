@@ -22,6 +22,18 @@ class Board:
     modified: bool = False
 
 
+def full_frame_board(image: Image) -> Board:
+    """Return the complete original video frame without cropping or perspective warp."""
+    return Board(
+        image=image.copy(),
+        coordinates=[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+        fallback=False,
+        warning=None,
+        reliability="full_frame",
+        modified=False,
+    )
+
+
 def order_corners(points: NDArray[Any]) -> NDArray[np.float32]:
     points = np.asarray(points, dtype=np.float32).reshape(4, 2)
     ordered = np.empty((4, 2), dtype=np.float32)

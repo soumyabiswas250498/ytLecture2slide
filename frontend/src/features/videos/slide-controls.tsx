@@ -1,92 +1,69 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import {
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Play,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+  XCircle,
+} from "lucide-react";
+import { ActionButton } from "@/components/shared/action-button";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ProgressIndicator } from "@/components/shared/progress-indicator";
+import { StatusBadge, type StatusTone } from "@/components/shared/status-badge";
 import { Modal } from "@/components/ui/modal";
 import {
   deleteSlides,
   getSlideState,
-  processSelected,
   processSlides,
   slideAction,
-  type Crop,
 } from "@/services/slides";
-import { frameUrl, getExtraction, getFrames } from "@/services/extractions";
+import { getExtraction } from "@/services/extractions";
 import { SlidePreview } from "./slide-preview";
 
-export function SlideToolbar({ selectedIds }: { selectedIds: number[] }) {
-  const client = useQueryClient();
-  const bulk = useMutation({
-    mutationFn: () => processSelected(selectedIds),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: ["slide-processing"] });
-    },
-  });
-  return (
-    <div className="space-y-2">
-      <Button
-        variant="outline"
-        disabled={!selectedIds.length || bulk.isPending}
-        onClick={() => bulk.mutate()}
-      >
-        Process selected slides
-      </Button>
-      {bulk.isError && <p role="alert">{bulk.error.message}</p>}
-      {bulk.data && (
-        <div role="status">
-          {bulk.data.started_ids.length} slide jobs queued
-          {bulk.data.errors.map((item) => (
-            <p key={item.video_id}>
-              Video #{item.video_id}: {item.reason}
-            </p>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+const slideStatusTone: Record<string, StatusTone> = {
+  pending: "neutral",
+  processing: "info",
+  processed: "success",
+  failed: "error",
+  cancelled: "warning",
+};
 
-export function SlideControls({ videoId }: { videoId: number }) {
+export function SlideControls({
+  videoId,
+  isExcluded = false,
+}: {
+  videoId: number;
+  isExcluded?: boolean;
+}) {
   const client = useQueryClient();
   const [preview, setPreview] = useState(false);
-  const [adjust, setAdjust] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [crop, setCrop] = useState<Crop>({
-    left: 0,
-    top: 0,
-    right: 1,
-    bottom: 1,
-  });
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
   const query = useQuery({
     queryKey: ["slide-processing", videoId],
     queryFn: ({ signal }) => getSlideState(videoId, signal),
-    refetchInterval: (query) => (query.state.data?.requested ? 1000 : false),
+    refetchInterval: (q) => (q.state.data?.requested ? 1000 : false),
   });
   const extraction = useQuery({
     queryKey: ["extraction", videoId],
     queryFn: ({ signal }) => getExtraction(videoId, signal),
   });
-  const cropPreview = useQuery({
-    queryKey: ["frames", videoId, 1],
-    queryFn: ({ signal }) => getFrames(videoId, 1, signal),
-    enabled: adjust,
-  });
+
   const action = useMutation({
-    mutationFn: async (
-      kind: "start" | "retry" | "cancel" | "crop" | "delete",
-    ) => {
+    mutationFn: async (kind: "start" | "retry" | "cancel" | "delete") => {
       if (kind === "delete") return deleteSlides(videoId);
-      if (kind === "start" || kind === "crop") {
-        await processSlides(
-          videoId,
-          kind === "crop" ? crop : undefined,
-          !!query.data?.output_directory,
-        );
+      if (kind === "start") {
+        await processSlides(videoId, undefined, !!query.data?.output_directory);
         return;
       }
       await slideAction(videoId, kind);
     },
     onSuccess: () => {
-      setAdjust(false);
       setConfirmDelete(false);
       void client.invalidateQueries({
         queryKey: ["slide-processing", videoId],
@@ -94,190 +71,173 @@ export function SlideControls({ videoId }: { videoId: number }) {
       void client.invalidateQueries({ queryKey: ["slides", videoId] });
     },
   });
+
   const state = query.data;
-  const active = state?.requested || state?.status === "processing";
+  const active = Boolean(state?.requested || state?.status === "processing");
   const ready = extraction.data?.status === "extracted";
-  const validCrop =
-    Object.values(crop).every(Number.isFinite) &&
-    crop.left >= 0 &&
-    crop.top >= 0 &&
-    crop.right <= 1 &&
-    crop.bottom <= 1 &&
-    crop.left < crop.right &&
-    crop.top < crop.bottom;
+  const hasDiagnostics = Boolean(
+    state && (state.reconstructed_count > 0 || state.review_count > 0),
+  );
+
   return (
-    <div className="min-w-52 space-y-2">
-      {query.isPending && <p>Loading slides…</p>}
-      {query.isError && <p role="alert">{query.error.message}</p>}
+    <div className="min-w-[176px] space-y-1">
+      {query.isPending && (
+        <span className="text-xs text-muted-foreground">Loading slides…</span>
+      )}
+      {query.isError && (
+        <p role="alert" className="text-xs text-red-700">
+          {query.error.message}
+        </p>
+      )}
       {state && (
         <>
-          <p>Slides: {state.status}</p>
-          <p>
-            Input: {state.input_count} · Additional: {state.additional_count} ·
-            Output: {state.output_count}
-          </p>
-          <p>
-            Duplicates: {state.duplicate_count} · Reconstructed:{" "}
-            {state.reconstructed_count} · Review: {state.review_count}
-          </p>
-          {active && (
-            <>
-              <progress
-                aria-label="Slide processing progress"
-                value={state.progress}
-                max={100}
-              />
-              <p>
-                {state.completed_count} / {state.input_count} primary
-                screenshots examined
-              </p>
-            </>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StatusBadge
+              label={state.status}
+              tone={slideStatusTone[state.status] ?? "neutral"}
+            />
+            {state.input_count > 0 && (
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                In {state.input_count} · +{state.additional_count} · Dup{" "}
+                {state.duplicate_count} · Out {state.output_count}
+              </span>
+            )}
+          </div>
+
+          {hasDiagnostics && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setDetailsOpen((prev) => !prev)}
+                className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                {detailsOpen ? "Hide details" : "Details"}
+                {detailsOpen ? (
+                  <ChevronUp size={11} aria-hidden="true" />
+                ) : (
+                  <ChevronDown size={11} aria-hidden="true" />
+                )}
+              </button>
+              {detailsOpen && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Reconstructed: {state.reconstructed_count}
+                  {state.review_count > 0 &&
+                    ` · Potentially obstructed: ${state.review_count} (retained)`}
+                </p>
+              )}
+            </div>
           )}
-          {state.error && <p role="alert">{state.error}</p>}
-          <div className="flex flex-wrap gap-2">
-            {!active && ready && (
-              <Button
-                size="sm"
-                variant="outline"
+
+          {active && (
+            <ProgressIndicator
+              value={state.progress}
+              ariaLabel="Slide processing progress"
+              detail={`${state.completed_count} / ${state.input_count} primary screenshots examined`}
+            />
+          )}
+
+          {state.error && (
+            <p
+              role="alert"
+              className="max-w-[220px] truncate text-xs text-red-700"
+              title={state.error}
+            >
+              {state.error}
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1">
+            {!active && ready && !isExcluded && (
+              <ActionButton
+                tooltip={
+                  state.output_directory ? "Reprocess slides" : "Process slides"
+                }
+                ariaLabel={
+                  state.output_directory ? "Reprocess Slides" : "Process Slides"
+                }
                 disabled={action.isPending}
                 onClick={() => action.mutate("start")}
               >
-                {state.output_directory ? "Reprocess Slides" : "Process Slides"}
-              </Button>
+                {state.output_directory ? (
+                  <RotateCw size={12} aria-hidden="true" />
+                ) : (
+                  <Play size={12} aria-hidden="true" />
+                )}
+                {state.output_directory ? "Reprocess" : "Process"}
+              </ActionButton>
             )}
             {active && (
-              <Button
-                size="sm"
-                variant="outline"
+              <ActionButton
+                tooltip="Cancel slide processing"
+                ariaLabel="Cancel slides"
                 disabled={action.isPending}
                 onClick={() => action.mutate("cancel")}
               >
-                Cancel slides
-              </Button>
+                <XCircle size={12} aria-hidden="true" />
+                Cancel
+              </ActionButton>
             )}
-            {!active && ["failed", "cancelled"].includes(state.status) && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={action.isPending}
-                onClick={() => action.mutate("retry")}
-              >
-                Retry slides
-              </Button>
-            )}
+            {!active &&
+              !isExcluded &&
+              ["failed", "cancelled"].includes(state.status) && (
+                <ActionButton
+                  tooltip="Retry slide processing"
+                  ariaLabel="Retry slides"
+                  disabled={action.isPending}
+                  onClick={() => action.mutate("retry")}
+                >
+                  <RotateCcw size={12} aria-hidden="true" />
+                  Retry
+                </ActionButton>
+              )}
             {state.output_directory && (
-              <Button
-                size="sm"
-                variant="outline"
+              <ActionButton
+                tooltip="Preview and compare slides"
+                ariaLabel="Compare slides"
                 onClick={() => setPreview(true)}
               >
-                Compare slides
-              </Button>
-            )}
-            {!active && ready && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAdjust(true)}
-              >
-                Adjust board crop
-              </Button>
+                <Eye size={12} aria-hidden="true" />
+                Preview
+              </ActionButton>
             )}
             {!active && state.output_directory && (
-              <Button
-                size="sm"
-                variant="outline"
+              <ActionButton
+                tooltip="Delete processed slides"
+                ariaLabel="Delete processed slides"
+                className="text-red-700 hover:bg-red-50"
                 onClick={() => setConfirmDelete(true)}
               >
-                Delete processed slides
-              </Button>
+                <Trash2 size={12} aria-hidden="true" />
+              </ActionButton>
             )}
           </div>
         </>
       )}
-      {action.isError && <p role="alert">{action.error.message}</p>}
+      {action.isError && (
+        <p role="alert" className="text-xs text-red-700">
+          {action.error.message}
+        </p>
+      )}
+
       <Modal
         open={preview}
         title="Slide comparison"
+        size="fullscreen"
         onClose={() => setPreview(false)}
       >
         {preview && <SlidePreview videoId={videoId} />}
       </Modal>
-      <Modal
-        open={adjust}
-        title="Adjust board crop"
-        onClose={() => setAdjust(false)}
-      >
-        <p>
-          Normalized coordinates from 0 to 1. Reprocessing preserves the
-          previous successful generation until the replacement succeeds. Preview
-          the current originals under Compare slides.
-        </p>
-        {cropPreview.data?.items[0] && (
-          <div className="relative my-3">
-            <img
-              src={frameUrl(videoId, cropPreview.data.items[0].filename)}
-              alt="First source screenshot for crop adjustment"
-              className="w-full"
-            />
-            {validCrop && (
-              <div
-                aria-label="Selected board crop"
-                className="pointer-events-none absolute border-2 border-red-500"
-                style={{
-                  left: `${crop.left * 100}%`,
-                  top: `${crop.top * 100}%`,
-                  width: `${(crop.right - crop.left) * 100}%`,
-                  height: `${(crop.bottom - crop.top) * 100}%`,
-                }}
-              />
-            )}
-          </div>
-        )}
-        {(["left", "top", "right", "bottom"] as const).map((key) => (
-          <label key={key} className="m-2 block">
-            {key}
-            <input
-              aria-label={`Crop ${key}`}
-              type="number"
-              min={0}
-              max={1}
-              step={0.01}
-              value={crop[key]}
-              onChange={(e) =>
-                setCrop({ ...crop, [key]: Number(e.target.value) })
-              }
-              className="ml-2 rounded border p-2"
-            />
-          </label>
-        ))}
-        {!validCrop && (
-          <p role="alert">Choose a positive rectangle within the image.</p>
-        )}
-        <Button
-          disabled={!validCrop || action.isPending}
-          onClick={() => action.mutate("crop")}
-        >
-          Apply crop and reprocess
-        </Button>
-      </Modal>
-      <Modal
+
+      <ConfirmDialog
         open={confirmDelete}
         title="Delete processed slides"
+        description="Delete generated slide comparisons? Original screenshots and source videos are preserved."
+        confirmLabel="Confirm delete slides"
+        pendingLabel="Deleting…"
+        isPending={action.isPending}
+        onConfirm={() => action.mutate("delete")}
         onClose={() => setConfirmDelete(false)}
-      >
-        <p>
-          Remove processed generations? Source video and original extracted
-          screenshots remain available.
-        </p>
-        <Button
-          variant="destructive"
-          disabled={action.isPending}
-          onClick={() => action.mutate("delete")}
-        >
-          Confirm delete processed slides
-        </Button>
-      </Modal>
+      />
     </div>
   );
 }

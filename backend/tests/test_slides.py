@@ -540,13 +540,62 @@ def test_request_overrides_preserve_server_defaults(
     )
     response = client.post(
         f"/api/v1/videos/{video_id}/slide-processing",
-        json={"configuration": {"crop": {"bottom": 0.9}}},
+        json={"configuration": {"crop": {"bottom": 0.9}, "max_fusion_frames": 7}},
     )
     assert response.status_code == 202
     config = SlideConfig.model_validate_json(response.json()["configuration"])
     assert not config.adaptive_enabled and config.max_additional_samples == 7
-    assert config.crop and config.crop.bottom == 0.9
+    assert config.max_fusion_frames == 7
+    assert config.crop is None  # Full-frame policy ignores crop overrides
     assert wait(client, video_id)["status"] == "processed"
+
+
+def test_full_frame_ignores_saved_channel_crop_profile(
+    migrated_client: TestClient, tmp_path: Path
+) -> None:
+    client = migrated_client
+    ch_resp = client.post(
+        "/api/v1/channels",
+        json={
+            "name": "Crop Channel",
+            "channel_url": "https://www.youtube.com/@cropchannel",
+            "search_keyword": "IDO",
+        },
+    )
+    assert ch_resp.status_code == 201
+    channel_id = ch_resp.json()["id"]
+    video_id = seed(client, tmp_path)
+    # Attach video to channel and seed a saved channel crop profile
+    sessions = client.app.state.sessions  # type: ignore[attr-defined]
+    from app.infrastructure.models import VideoRecord
+
+    with sessions() as session:
+        rec = session.get(VideoRecord, video_id)
+        assert rec is not None
+        rec.channel_id = channel_id
+        session.commit()
+
+    put_resp = client.put(
+        f"/api/v1/channels/{channel_id}/board-profile",
+        json={"crop": {"left": 0.1, "top": 0.1, "right": 0.9, "bottom": 0.85}},
+    )
+    assert put_resp.status_code == 200
+
+    response = client.post(f"/api/v1/videos/{video_id}/slide-processing", json={})
+    assert response.status_code == 202
+    state = wait(client, video_id)
+    assert state["status"] == "processed"
+    config = SlideConfig.model_validate_json(str(state["configuration"]))
+    assert config.profile_crop is None
+    assert config.crop is None
+
+    slides = client.get(f"/api/v1/videos/{video_id}/slides").json()
+    assert slides["items"]
+    first = slides["items"][0]
+    assert first["fallback"] is False
+    assert first["quality"]["crop_reliability"] == "full_frame"
+    assert first["board_coordinates"] == [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    assert not any("Board boundary" in w for w in first["warnings"])
 
 
 def test_reconstruction_rejects_invalid_observations(config: SlideConfig) -> None:
@@ -863,9 +912,7 @@ def test_delete_extracted_frames_blocked_when_slides_exist(
     assert client.delete(f"/api/v1/videos/{video_id}/extraction").status_code == 200
 
 
-def test_transition_scan_discovers_inter_primary_slide(
-    tmp_path: Path, config: SlideConfig
-) -> None:
+def test_transition_scan_discovers_inter_primary_slide(tmp_path: Path, config: SlideConfig) -> None:
     import subprocess
 
     from app.infrastructure.frame_extractor import FFmpegFrameExtractor
@@ -873,9 +920,7 @@ def test_transition_scan_discovers_inter_primary_slide(
     q1 = question("Question 1: Capital of West Bengal?")
     q_mid = np.full((240, 400, 3), 240, dtype=np.uint8)
     cv2.rectangle(q_mid, (30, 30), (370, 210), (30, 45, 90), -1)
-    cv2.putText(
-        q_mid, "MID SLIDE", (95, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3
-    )
+    cv2.putText(q_mid, "MID SLIDE", (95, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3)
     q3 = question("Question 3: Industrial Policy?")
     # Build a 90s synthetic video: 0-30s q1, 30-60s q_mid, 60-90s q3.
     # Primary 60s extraction only captures 0s (q1) and 60s (q3); q_mid at 30s is missed!
