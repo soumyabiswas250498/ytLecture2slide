@@ -19,13 +19,6 @@ def large_components(mask: Image, config: SlideConfig) -> Image:
             # Texture inside clothing is still foreground. Fill holes rather than treating
             # matching pixels within a silhouette as proof that the board was visible.
             cv2.drawContours(result, contours, -1, 255, cv2.FILLED)
-            x, y, width, height, _ = stats[index]
-            if height >= mask.shape[0] * 0.2 and y + height >= mask.shape[0] * 0.75:
-                padding = round(mask.shape[1] * config.foreground_padding)
-                result[
-                    max(0, y - padding) : min(mask.shape[0], y + height + padding),
-                    max(0, x - padding) : min(mask.shape[1], x + width + padding),
-                ] = 255
     if config.mask_dilation_pixels:
         size = config.mask_dilation_pixels * 2 + 1
         result = cv2.dilate(result, np.ones((size, size), dtype=np.uint8)).astype(np.uint8)
@@ -39,12 +32,11 @@ def obstruction_masks(images: list[Image], config: SlideConfig) -> list[Image]:
     model = cv2.createBackgroundSubtractorMOG2(
         history=max(10, len(images) * 2), varThreshold=config.pixel_difference, detectShadows=False
     )
-    temporal = []
-    for image in images:
-        temporal.append(model.apply(image))
+    temporal = [model.apply(image) for image in images]
     masks = []
     median = np.median(np.stack(images), axis=0).astype(np.uint8) if len(images) >= 3 else None
     kernel = np.ones((5, 5), dtype=np.uint8)
+    height = images[0].shape[0]
     for index, image in enumerate(images):
         skin = cv2.inRange(
             cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb),
@@ -67,6 +59,11 @@ def obstruction_masks(images: list[Image], config: SlideConfig) -> list[Image]:
             motion = large_components(motion.astype(np.uint8), config)
             if index > 0 and median is None:
                 motion = cv2.bitwise_and(motion, temporal[index])
+            # Suppress isolated multi-frame skin hints that neither move nor touch lower edge.
+            if np.any(hint):
+                touch_bottom = np.any(hint[int(height * 0.85) :, :] > 0)
+                if not touch_bottom and not np.any(cv2.bitwise_and(hint, motion)):
+                    hint = np.zeros_like(hint)
             hint = cv2.bitwise_or(hint, motion).astype(np.uint8)
         masks.append(hint)
     return masks

@@ -25,8 +25,18 @@ const slideSchema = z.object({
   processed_image_path: z.string(),
   cropped_image_path: z.string(),
   original_image_path: z.string(),
-  obstruction_mask_path: z.string(),
+  obstruction_mask_path: z.string().nullable().optional(),
   reconstruction_method: z.string(),
+  quality_category: z
+    .enum([
+      "clear_original",
+      "improved_original",
+      "reconstructed",
+      "incomplete",
+      "uncertain",
+    ])
+    .optional(),
+  selection_reason: z.string().optional(),
   fallback: z.boolean(),
   incomplete: z.boolean(),
   manual_review: z.boolean(),
@@ -35,6 +45,9 @@ const slideSchema = z.object({
   quality: z.object({
     obstruction_fraction: z.number(),
     unresolved_fraction: z.number(),
+    visible_coverage: z.number().optional(),
+    crop_reliability: z.string().optional(),
+    grouping_confidence: z.string().optional(),
     measurement_kind: z.literal("heuristic_not_accuracy"),
     verified_accuracy: z.null(),
   }),

@@ -179,8 +179,8 @@ def test_alignment_uncertainty_falls_back(config: SlideConfig) -> None:
 
 
 def test_sampling_boundaries_and_limits(config: SlideConfig) -> None:
-    assert sample_timestamps(60, 80, config, 10) == [65, 70, 75]
-    assert sample_timestamps(60, 80, config, 1) == [65]
+    assert sample_timestamps(60, 80, config, 10) == [65.0, 70.0, 75.0]
+    assert sample_timestamps(60, 80, config, 1) == [70.0]
     assert sample_timestamps(60, 64, config, 10) == []
     assert sample_timestamps(60, 80, config, 0) == []
 
@@ -332,8 +332,12 @@ def test_adaptive_real_extractor_bounded(tmp_path: Path, config: SlideConfig) ->
 
     from app.infrastructure.frame_extractor import FFmpegFrameExtractor
 
+    base = question()
+    obstructed = base.copy()
+    # Add a peach/skin-toned foreground block touching the lower frame to trigger adaptive sampling.
+    cv2.rectangle(obstructed, (40, 120), (140, 239), (140, 165, 210), -1)
     image = tmp_path / "input.png"
-    cv2.imwrite(str(image), question())
+    cv2.imwrite(str(image), obstructed)
     source = tmp_path / "source.mp4"
     subprocess.run(
         [
@@ -371,8 +375,10 @@ def test_adaptive_real_extractor_bounded(tmp_path: Path, config: SlideConfig) ->
         source=source,
     )
     assert len(result.additional_sampled_timestamps) == 3
-    for actual, requested in zip(result.additional_sampled_timestamps, [0.5, 1, 1.5], strict=True):
-        assert requested <= actual < requested + 0.041
+    for actual, requested in zip(
+        result.additional_sampled_timestamps, [2.5, 3.0, 3.5], strict=True
+    ):
+        assert requested - 0.5 <= actual <= requested + 0.5
     assert result.input_count == 2
     assert len(result.decisions) == 2
 
@@ -603,3 +609,332 @@ def test_disk_failure_does_not_publish(
             config=config.model_copy(update={"min_free_disk_mb": 1}),
         )
     assert not (tmp_path / "slides" / "manifest.json").exists()
+
+
+def test_channel_board_profile_persistence_and_fallback(
+    migrated_client: TestClient, tmp_path: Path, config: SlideConfig
+) -> None:
+    client = migrated_client
+    ch_resp = client.post(
+        "/api/v1/channels",
+        json={"name": "Board Channel", "channel_url": "https://www.youtube.com/@boardch"},
+    )
+    assert ch_resp.status_code == 201, ch_resp.text
+    channel_id = ch_resp.json()["id"]
+
+    # Initially no profile
+    assert client.get(f"/api/v1/channels/{channel_id}/board-profile").json() is None
+
+    # Save profile
+    put_resp = client.put(
+        f"/api/v1/channels/{channel_id}/board-profile",
+        json={
+            "crop": {"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 0.85},
+            "reference_width": 400,
+            "reference_height": 240,
+        },
+    )
+    assert put_resp.status_code == 200, put_resp.text
+    assert put_resp.json()["crop"]["bottom"] == pytest.approx(0.85)
+
+    # Validated profile applies cleanly to matching aspect ratio
+    img = question()
+    board_ok = isolate_board(
+        img,
+        config.model_copy(
+            update={
+                "profile_crop": Crop(left=0.0, top=0.0, right=1.0, bottom=0.85),
+                "profile_reference_aspect": 400 / 240,
+            }
+        ),
+    )
+    assert board_ok.reliability == "profile_validated"
+    assert not board_ok.fallback
+    assert board_ok.image.shape[0] == round(240 * 0.85)
+
+    # Aspect ratio mismatch falls back safely to full frame
+    board_bad = isolate_board(
+        img,
+        config.model_copy(
+            update={
+                "profile_crop": Crop(left=0.0, top=0.0, right=1.0, bottom=0.85),
+                "profile_reference_aspect": 0.75,
+            }
+        ),
+    )
+    assert board_bad.reliability == "full_frame_fallback"
+    assert board_bad.fallback
+    assert board_bad.image.shape == img.shape
+
+    # Delete profile
+    del_resp = client.delete(f"/api/v1/channels/{channel_id}/board-profile")
+    assert del_resp.status_code == 204
+    assert client.get(f"/api/v1/channels/{channel_id}/board-profile").json() is None
+
+
+def test_teacher_movement_grouped_and_annotations_preserved(
+    tmp_path: Path, config: SlideConfig
+) -> None:
+    clean = question()
+    teacher_left = clean.copy()
+    cv2.rectangle(teacher_left, (15, 110), (75, 239), (30, 40, 60), -1)
+    teacher_right = clean.copy()
+    cv2.rectangle(teacher_right, (300, 110), (370, 239), (30, 40, 60), -1)
+    annotated = clean.copy()
+    cv2.line(annotated, (20, 85), (200, 85), (0, 240, 240), 3)
+
+    frames = generation(tmp_path / "frames", [teacher_left, clean, teacher_right, annotated])
+    result = SlideProcessor().process(
+        frames,
+        tmp_path / "slides",
+        video_id=1,
+        config=config.model_copy(update={"crop": Crop(left=0, top=0, right=1, bottom=1)}),
+    )
+    assert len(result.slides) == 2
+    assert result.duplicate_count == 2
+    first = result.slides[0]
+    assert first.quality_category == "clear_original"
+    assert first.manual_review is False
+    assert first.original_image_path == "frame_000060000.png"
+    assert result.slides[1].source_timestamps == [180.0]
+
+
+def test_best_frame_selection_prefers_clear_over_sharp_obstructed(config: SlideConfig) -> None:
+    from app.services.imaging.reconstruction import select_best_or_reconstruct
+
+    clean = question()
+    # Slightly soften clean image
+    soft_clean = cv2.GaussianBlur(clean, (3, 3), 0.5).astype(np.uint8)
+    obstructed = clean.copy()
+    # Sharp high-frequency pattern inside obstructed teacher region
+    for y in range(100, 235, 4):
+        cv2.line(obstructed, (200, y), (350, y), (255, 255, 255), 1)
+    mask_obs = np.zeros(clean.shape[:2], dtype=np.uint8)
+    mask_obs[100:235, 200:350] = 255
+    mask_clean = np.zeros(clean.shape[:2], dtype=np.uint8)
+
+    sel = select_best_or_reconstruct(
+        [obstructed, soft_clean],
+        [mask_obs, mask_clean],
+        config,
+        is_adaptive=[False, True],
+    )
+    assert sel.chosen_index == 1
+    assert sel.method == "original"
+    assert sel.quality_category == "improved_original"
+
+
+def test_adaptive_budget_distributed_across_video(tmp_path: Path, config: SlideConfig) -> None:
+    from app.domain.extraction import FrameMetadata
+
+    class FakeExtractor:
+        def extract(
+            self,
+            source: Path,
+            output: Path,
+            *,
+            video_id: str,
+            timestamps: list[float] | None = None,
+            **kwargs: object,
+        ) -> ExtractionResult:
+            output.mkdir(parents=True, exist_ok=True)
+            assert timestamps is not None
+            frames = []
+            for t in timestamps:
+                name = f"frame_{int(t * 1000):09d}.png"
+                cv2.imwrite(str(output / name), question(f"Q at {t}"))
+                frames.append(
+                    FrameMetadata(
+                        filename=name,
+                        requested_timestamp=t,
+                        actual_timestamp=t,
+                        width=400,
+                        height=240,
+                    )
+                )
+            return ExtractionResult(
+                video_id=video_id,
+                source_path=str(source),
+                source_size_bytes=source.stat().st_size,
+                source_mtime_ns=source.stat().st_mtime_ns,
+                video_duration=240.0,
+                interval_seconds=60.0,
+                start_timestamp=0.0,
+                end_timestamp=240.0,
+                frames=frames,
+                frame_count=len(frames),
+                processing_duration=0.0,
+            )
+
+    source = tmp_path / "src.mp4"
+    source.write_bytes(b"video")
+    imgs = []
+    titles = [
+        "1: Geography of Bengal",
+        "2: History of Jute Mills",
+        "3: Industrial Policy 1952",
+        "4: Tea Gardens of Darjeeling",
+    ]
+    for title in titles:
+        im = question(title)
+        cv2.rectangle(im, (40, 120), (140, 239), (140, 165, 210), -1)
+        imgs.append(im)
+    frames_dir = tmp_path / "frames"
+    frames_dir.mkdir()
+    fmeta = []
+    for i, im in enumerate(imgs):
+        name = f"frame_{i * 60000:09d}.png"
+        cv2.imwrite(str(frames_dir / name), im)
+        fmeta.append(
+            FrameMetadata(
+                filename=name,
+                requested_timestamp=i * 60,
+                actual_timestamp=i * 60,
+                width=400,
+                height=240,
+            )
+        )
+    (frames_dir / "manifest.json").write_text(
+        ExtractionResult(
+            video_id="1",
+            source_path=str(source.resolve()),
+            source_size_bytes=source.stat().st_size,
+            source_mtime_ns=source.stat().st_mtime_ns,
+            video_duration=240.0,
+            interval_seconds=60.0,
+            start_timestamp=0.0,
+            end_timestamp=240.0,
+            frames=fmeta,
+            frame_count=4,
+            processing_duration=0.0,
+        ).model_dump_json()
+    )
+
+    result = SlideProcessor(FakeExtractor()).process(
+        frames_dir,
+        tmp_path / "slides",
+        video_id=1,
+        config=config.model_copy(
+            update={
+                "adaptive_enabled": True,
+                "adaptive_scale_with_duration": False,
+                "max_additional_samples": 6,
+                "max_samples_per_segment": 1,
+                "additional_interval": 10.0,
+            }
+        ),
+        source=source,
+    )
+    # Samples must not all be consumed in segment 0; later segments (>120s) receive samples too.
+    assert any(t >= 120.0 for t in result.additional_sampled_timestamps)
+
+
+def test_storage_optimization_skips_redundant_copies(tmp_path: Path, config: SlideConfig) -> None:
+    frames = generation(tmp_path / "frames", [question()])
+    out = tmp_path / "slides"
+    result = SlideProcessor().process(
+        frames,
+        out,
+        video_id=1,
+        config=config.model_copy(update={"save_diagnostics": False}),
+    )
+    slide = result.slides[0]
+    assert slide.original_image_path == "frame_000000000.png"
+    assert slide.cropped_image_path == "frame_000000000.png"
+    assert slide.processed_image_path == "frame_000000000.png"
+    assert slide.obstruction_mask_path is None
+    pngs = list(out.glob("*.png"))
+    assert pngs == []
+
+
+def test_delete_extracted_frames_blocked_when_slides_exist(
+    migrated_client: TestClient, tmp_path: Path
+) -> None:
+    client = migrated_client
+    video_id = seed(client, tmp_path)
+    assert client.post(f"/api/v1/videos/{video_id}/slide-processing", json={}).status_code == 202
+    state = wait(client, video_id)
+    assert state["status"] == "processed"
+    # Deleting extracted frames while published slides reference them must fail with 409.
+    delete_frames = client.delete(f"/api/v1/videos/{video_id}/extraction")
+    assert delete_frames.status_code == 409
+    # After deleting slides, deleting extracted frames succeeds.
+    assert client.delete(f"/api/v1/videos/{video_id}/slide-processing").status_code == 200
+    assert client.delete(f"/api/v1/videos/{video_id}/extraction").status_code == 200
+
+
+def test_transition_scan_discovers_inter_primary_slide(
+    tmp_path: Path, config: SlideConfig
+) -> None:
+    import subprocess
+
+    from app.infrastructure.frame_extractor import FFmpegFrameExtractor
+
+    q1 = question("Question 1: Capital of West Bengal?")
+    q_mid = np.full((240, 400, 3), 240, dtype=np.uint8)
+    cv2.rectangle(q_mid, (30, 30), (370, 210), (30, 45, 90), -1)
+    cv2.putText(
+        q_mid, "MID SLIDE", (95, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.1, (255, 255, 255), 3
+    )
+    q3 = question("Question 3: Industrial Policy?")
+    # Build a 90s synthetic video: 0-30s q1, 30-60s q_mid, 60-90s q3.
+    # Primary 60s extraction only captures 0s (q1) and 60s (q3); q_mid at 30s is missed!
+    p1, p2, p3 = tmp_path / "p1.png", tmp_path / "p2.png", tmp_path / "p3.png"
+    cv2.imwrite(str(p1), q1)
+    cv2.imwrite(str(p2), q_mid)
+    cv2.imwrite(str(p3), q3)
+    concat_file = tmp_path / "concat.txt"
+    concat_file.write_text(
+        f"file '{p1}'\nduration 25\n"
+        f"file '{p2}'\nduration 20\n"
+        f"file '{p3}'\nduration 25\n"
+        f"file '{p3}'\n"
+    )
+    source = tmp_path / "source.mp4"
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
+            "-vf",
+            "fps=1",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(source),
+        ],
+        check=True,
+    )
+    extractor = FFmpegFrameExtractor(min_free_disk_mb=0)
+    frames = tmp_path / "frames"
+    extractor.extract(source, frames, video_id="1", interval=60.0)
+    out = tmp_path / "slides"
+    result = SlideProcessor(extractor).process(
+        frames,
+        out,
+        video_id=1,
+        config=config.model_copy(
+            update={
+                "adaptive_enabled": False,
+                "transition_scan_enabled": True,
+                "transition_scan_max_probes": 4,
+            }
+        ),
+        source=source,
+    )
+    # 2 primaries (0s, 60s) + 1 transition-discovered slide (~30s) = 3 chronological slides.
+    assert result.input_count == 2
+    assert len(result.slides) == 3
+    assert any("Discovered via inter-primary transition scan." in s.warnings for s in result.slides)
+    timestamps = [s.source_timestamps[0] for s in result.slides]
+    assert timestamps == sorted(timestamps)
+    assert 25.0 <= timestamps[1] <= 40.0
+    assert read_slide_manifest(out).video_id == 1

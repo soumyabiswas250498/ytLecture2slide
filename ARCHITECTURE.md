@@ -271,3 +271,11 @@ current evaluated lecture has all outputs flagged for manual review. The bounded
 budget is consumed early rather than promising whole-video adaptive coverage. No scene-cut
 search or dense full-video completeness scan is performed. Physical source PNG copies in the
 comparison generation cost storage but decouple successful previews from later frame deletion.
+
+
+## Phase 6 Optimization & Stabilization
+
+- Added `channel_board_profiles` table (Alembic revision `c3d8e1f2a4b5`) and `ChannelBoardProfileRepository` to persist normalized per-channel crop/perspective profiles, automatically reuse them on subsequent videos from that channel, and validate aspect ratio and edge structure before applying (falling back to full frame on layout changes).
+- Separated chronological slide segmentation (`compare_visible` in `services/imaging/similarity.py`) from representative selection: compares mutually visible board regions (excluding joint 2-frame foreground masks), inspects 4×4 grid cells, detects newly added annotation/answer strokes, and checks both segment anchor and previous frame to prevent transitive drift.
+- `select_best_or_reconstruct` (`services/imaging/reconstruction.py`) ranks candidates by visible board coverage and visible-region sharpness/contrast, selecting `clear_original` or `improved_original` directly when obstruction is below `clear_obstruction_threshold` (3%) and invoking observed-pixel fusion only when needed.
+- `SlideProcessor` (`services/imaging/pipeline.py`) uses a 3-pass flow: full-video primary segmentation, duration-scaled priority-based adaptive sampling distributed across 4 temporal quarters with early stopping, and storage-optimized output referencing immutable Phase 5 frames when unmodified (`save_diagnostics=False` by default).

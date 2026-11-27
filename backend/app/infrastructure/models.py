@@ -134,3 +134,22 @@ class SlideProcessingRecord(Base):
     configuration: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     output_directory: Mapped[str | None] = mapped_column(String(1024))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class ChannelBoardProfileRecord(Base):
+    __tablename__ = "channel_board_profiles"
+
+    channel_id: Mapped[int] = mapped_column(
+        ForeignKey("channels.id", ondelete="CASCADE"), primary_key=True
+    )
+    crop_left: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    crop_top: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    crop_right: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    crop_bottom: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    corners_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reference_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reference_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )

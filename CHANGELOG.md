@@ -4,6 +4,14 @@ Record actual changes to ytLecture2slide here. Maintain a chronological developm
 
 ## [Unreleased]
 
+### Changed — Phase 6 Final Stabilization (2026-11-27)
+
+- Removed bounding-box inflation in `obstruction.py` (`large_components`) with `mask_dilation_pixels=20` and made `reconstruct()` filter to compatible observations (`fusion_max_residual=0.0008`).
+- Distributed `sample_timestamps()` across segment interiors, prioritized moderately obstructed segments (`<= 0.25`) in `_run_adaptive_sampling()`, and implemented two-stage low-res/full-res `_scan_missed_transitions()`.
+- Added `SlideService.assert_no_published_slides` delete guard on `ExtractionService.delete()` (`409 Conflict`) to protect immutable frame references.
+- Added `ChannelBoardProfileModal` on the frontend Channels page for viewing, saving/updating, and deleting per-channel crop profiles.
+- Verified across 3 channels (`BSSEI Competitive`, `TWS Academy`, `VSCE Academy` validation), `248` backend tests (with `PHASE6_REAL_DATA`), `40` frontend tests, `11` Docker Playwright tests, and Docker restart/recreation persistence. See `docs/PHASE6_REPORT.md`.
+
 ### Documentation
 
 - Defined the initial product requirements, proposed modular architecture and ten-phase development roadmap.
@@ -158,3 +166,14 @@ For subsequent completed tasks, use Added, Changed, Fixed, Removed, Security, Do
 - Updated configuration, architecture and operational documentation. See docs/PHASE6_REPORT.md
   for thresholds, resource/storage measurements, visual artifacts, failures and limitations.
   Phase 7 remains unstarted; no commit or push.
+
+
+### Changed — Phase 6 Optimization & Stabilization (2026-11-27)
+
+- Added persistent per-channel smartboard crop/perspective profiles (`channel_board_profiles` table, Alembic revision `c3d8e1f2a4b5`, `ChannelBoardProfileRepository`, and `GET/PUT/DELETE /api/v1/channels/{id}/board-profile`), automatic reuse for videos from the same channel, and aspect-ratio/edge-structure fallback validation.
+- Separated chronological slide segmentation (`compare_visible` with mutually visible region SSIM, 4×4 grid cell change inspection, edge Jaccard, and new-annotation/highlight stroke detection) from duplicate representative selection; prevented uncontrolled transitive drift by checking both segment anchor and previous frame.
+- Prioritized best-frame selection (`select_best_or_reconstruct` and `score_candidate`) using visible board coverage and visible-region sharpness/contrast before attempting observed-pixel fusion.
+- Replaced chronological early-segment adaptive budget exhaustion with duration-scaled, whole-video priority-based sampling across 4 temporal quarters, stopping early once a clear observation is found.
+- Added meaningful quality categories (`clear_original`, `improved_original`, `reconstructed`, `incomplete`, `uncertain`) and separate `crop_reliability`, `visible_coverage`, and `grouping_confidence` indicators; updated frontend Zod schemas and `SlidePreview`.
+- Reduced intermediate output storage by referencing immutable Phase 5 frames for unmodified originals, avoiding duplicate crop/slide copies, and making diagnostic masks opt-in (`save_diagnostics=False` by default).
+- Verified 245 backend tests (1 opt-in skipped), Ruff lint/format, strict mypy (56 source files), 40 frontend Vitest tests, ESLint/Prettier/`tsc -b`/Vite build, and 11 local Playwright E2E tests. Authorized 86-minute lecture benchmark (`vqYNwaqFPJM`): 87 inputs → 76 slides (11 duplicates excluded, 0 distinct questions lost), 65 distributed adaptive samples, 58 manual reviews (down from 86), 152.6 MB output (down from 351.8 MB, -56.6%). See `docs/PHASE6_REPORT.md`.

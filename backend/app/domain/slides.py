@@ -35,9 +35,30 @@ class Crop(BaseModel):
         return self
 
 
+class ChannelBoardProfile(BaseModel):
+    """Persistent normalized crop/perspective profile for a channel."""
+
+    model_config = ConfigDict(from_attributes=True)
+    channel_id: int = Field(gt=0)
+    crop: Crop
+    corners: list[tuple[Normalized, Normalized]] | None = Field(
+        default=None, min_length=4, max_length=4
+    )
+    reference_width: int | None = Field(default=None, ge=16)
+    reference_height: int | None = Field(default=None, ge=16)
+    validated: bool = True
+    updated_at: datetime | None = None
+
+
 class SlideConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     crop: Crop | None = None
+    corners: list[tuple[Normalized, Normalized]] | None = Field(
+        default=None, min_length=4, max_length=4
+    )
+    profile_crop: Crop | None = None
+    profile_reference_aspect: float | None = Field(default=None, gt=0)
+    profile_min_edge_ratio: float = Field(default=0.35, gt=0, le=1)
     board_min_area: float = Field(default=0.85, gt=0, le=1)
     board_border_margin: float = Field(default=0.06, ge=0, le=0.2)
     edge_low_threshold: int = Field(default=60, ge=0, le=255)
@@ -55,26 +76,49 @@ class SlideConfig(BaseModel):
     group_max_changed: float = Field(default=0.22, ge=0, le=1)
     duplicate_ssim: float = Field(default=0.99, ge=0, le=1)
     duplicate_max_changed: float = Field(default=0.00002, ge=0, le=0.01)
+    obstruction_aware_ssim: float = Field(default=0.92, ge=0, le=1)
+    dedup_visible_ssim: float = Field(default=0.96, ge=0, le=1)
+    dedup_visible_max_changed: float = Field(default=0.008, ge=0, le=0.2)
+    dedup_max_cell_changed: float = Field(default=0.015, ge=0, le=0.5)
+    dedup_annotation_threshold: float = Field(default=0.0015, ge=0, le=0.1)
+    clear_obstruction_threshold: float = Field(default=0.03, ge=0, le=0.5)
     foreground_min_area: float = Field(default=0.015, gt=0, le=0.5)
     foreground_padding: float = Field(default=0.03, ge=0, le=0.1)
-    mask_dilation_pixels: int = Field(default=5, ge=0, le=30)
+    mask_dilation_pixels: int = Field(default=20, ge=0, le=30)
     foreground_max_area: float = Field(default=0.4, gt=0, le=0.8)
     fusion_comparison_blur: Literal[1, 3, 5] = 3
-    fusion_max_residual: float = Field(default=0.0001, ge=0, le=0.01)
+    fusion_max_residual: float = Field(default=0.0008, ge=0, le=0.01)
     adaptive_enabled: bool = True
+    adaptive_scale_with_duration: bool = True
+    adaptive_samples_per_hour: int = Field(default=45, ge=0, le=300)
+    max_additional_samples_cap: int = Field(default=120, ge=0, le=1000)
     additional_interval: float = Field(default=5, ge=0.1, le=60, allow_inf_nan=False)
     max_additional_samples: int = Field(default=40, ge=0, le=1000)
     max_samples_per_segment: int = Field(default=6, ge=1, le=30)
     max_fusion_frames: int = Field(default=5, ge=3, le=9)
+    transition_scan_enabled: bool = True
+    transition_scan_max_probes: int = Field(default=12, ge=0, le=100)
+    save_diagnostics: bool = False
     min_free_disk_mb: int = Field(default=500, ge=0)
     max_image_pixels: int = Field(default=10_000_000, ge=1)
     alignment_max_shift: float = Field(default=2, ge=0, le=10)
+
+
+CropReliability = Literal["manual", "profile_validated", "auto_detected", "full_frame_fallback"]
+QualityCategory = Literal[
+    "clear_original", "improved_original", "reconstructed", "incomplete", "uncertain"
+]
+GroupingConfidence = Literal["high", "medium", "low"]
 
 
 class SlideQuality(BaseModel):
     obstruction_fraction: float = Field(ge=0, le=1)
     unresolved_fraction: float = Field(ge=0, le=1)
     sharpness: float = Field(ge=0, allow_inf_nan=False)
+    visible_coverage: float = Field(default=1.0, ge=0, le=1)
+    clarity_score: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    crop_reliability: CropReliability = "full_frame_fallback"
+    grouping_confidence: GroupingConfidence = "medium"
     measurement_kind: Literal["heuristic_not_accuracy"] = "heuristic_not_accuracy"
     verified_accuracy: None = None
 
@@ -84,13 +128,17 @@ class Slide(BaseModel):
     source_frame_ids: list[str] = Field(min_length=1)
     source_timestamps: list[Timestamp] = Field(min_length=1)
     additional_sampled_timestamps: list[Timestamp] = []
-    processed_image_path: str = Field(pattern=r"^slide_\d{5}\.png$")
-    cropped_image_path: str = Field(pattern=r"^crop_\d{5}\.png$")
-    obstruction_mask_path: str = Field(pattern=r"^mask_\d{5}\.png$")
-    original_image_path: str = Field(pattern=r"^original_\d{5}\.png$")
+    processed_image_path: str = Field(
+        pattern=r"^(slide_\d{5}|crop_\d{5}|original_\d{5}|frame_\d{9})\.png$"
+    )
+    cropped_image_path: str = Field(pattern=r"^(crop_\d{5}|original_\d{5}|frame_\d{9})\.png$")
+    obstruction_mask_path: str | None = Field(default=None, pattern=r"^mask_\d{5}\.png$")
+    original_image_path: str = Field(pattern=r"^(original_\d{5}|frame_\d{9})\.png$")
     board_coordinates: list[tuple[Normalized, Normalized]] = Field(min_length=4, max_length=4)
     reconstruction_method: Literal["original", "masked_pixel_fusion", "temporal_median"]
     quality: SlideQuality
+    quality_category: QualityCategory = "uncertain"
+    selection_reason: str = ""
     duplicate_group: str
     warnings: list[str] = []
     fallback: bool

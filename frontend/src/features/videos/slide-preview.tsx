@@ -34,19 +34,32 @@ export function SlidePreview({ videoId }: { videoId: number }) {
           <h3>
             {slide.slide_id} · {slide.source_timestamps.join(", ")}s ·{" "}
             {slide.reconstruction_method}
+            {slide.quality_category ? ` · ${slide.quality_category}` : ""}
           </h3>
           <p>
             {slide.fallback && "Fallback · "}
             {slide.incomplete && "Incomplete · "}
             {slide.manual_review && "Manual review required"}
           </p>
+          {slide.selection_reason && (
+            <p className="text-sm text-muted-foreground">
+              {slide.selection_reason}
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {(
               [
                 ["Original screenshot", slide.original_image_path],
                 ["Cropped smartboard", slide.cropped_image_path],
                 ["Reconstructed slide", slide.processed_image_path],
-                ["Obstruction mask (heuristic)", slide.obstruction_mask_path],
+                ...(slide.obstruction_mask_path
+                  ? ([
+                      [
+                        "Obstruction mask (heuristic)",
+                        slide.obstruction_mask_path,
+                      ],
+                    ] as const)
+                  : []),
               ] as const
             ).map(([label, name]) => (
               <figure key={label}>

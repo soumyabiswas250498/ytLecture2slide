@@ -308,3 +308,175 @@ physical Ubuntu homelab or native AMD64 performance claim is made from an ARM64 
 
 User visual acceptance of these examples remains a product review step. **Stop after Phase 6;
 Phase 7 requires explicit approval.** No PDF or later-phase work has started.
+
+
+---
+
+# Phase 6 Optimization & Stabilization Addendum (2026-11-27)
+
+## 1. Root causes of the original poor results
+
+1. **Automatic smartboard detection failure**: The lecture smartboard fills the upper 86.5% of the frame with a bright promotional footer below, lacking a continuous outer 4-sided bezel contour >= 85% of frame area within 6% of all borders. Consequently, `isolate_board` fell back to full-frame on all 87 frames (`fallback=true`, `review_count=86`).
+2. **Global pixel-wise duplicate check**: `compare()` required global `SSIM >= 0.99` and `changed_fraction <= 0.00002` (0.002% of pixels). Any teacher movement or compression difference prevented grouping, resulting in only 1 duplicate removed (`5160s` outro) out of 87 frames.
+3. **Single-pass chronological adaptive sampling**: Sampling ran inside the primary frame loop, consuming all 40 extra samples between `5s` and `380s` (first 6.5 minutes of an 86-minute video), leaving the remaining 80 minutes with 0 adaptive samples.
+4. **Reconstruction-first & blanket manual review**: Every slide defaulted to `incomplete=True, manual_review=True` regardless of actual visibility, and `pipeline.py` wrote 4 full-resolution PNGs per slide (`original`, `crop`, `slide`, `mask`), producing ~351.8 MB of output.
+
+## 2. Algorithms evaluated
+
+- **Channel-specific persistent crop & layout validation**: Normalized crop + optional 4-point perspective corners stored in SQLite (`channel_board_profiles`), validated via aspect-ratio tolerance (<= 15%), minimum area (>= 30%), non-blank variance, and edge-structure retention (>= 35% of frame edges).
+- **Obstruction-aware segmentation (`compare_visible`)**: Joint 2-frame foreground masking (`obstruction_masks([a, b])`), mutually visible SSIM, 4×4 grid cell change inspection, mutually visible edge Jaccard, and new-annotation/bright-stroke detection. Checked against both segment anchor and previous frame to prevent transitive drift.
+- **Best-frame selection (`score_candidate` / `select_best_or_reconstruct`)**: Ranks candidates by visible board coverage (`1 - obstruction_fraction`) and visible-region Laplacian variance/contrast, selecting `clear_original` or `improved_original` directly when `obstruction_fraction <= 0.03` before attempting observed-pixel fusion.
+- **Whole-video priority-based adaptive sampling**: 3-pass pipeline assessing all primaries first, scaling budget with video duration (`45 samples/hour`, capped at `120`), and distributing samples round-robin across 4 temporal quarters with early stopping once a clear observation is found.
+- **Storage optimization**: Reference immutable Phase 5 frames for unmodified originals, skip duplicate crop/slide PNGs when identical, and make diagnostic masks opt-in (`save_diagnostics=False` by default).
+
+## 3. Selected algorithms and justification
+
+All five improvements above were selected and integrated into `board.py`, `similarity.py`, `obstruction.py`, `reconstruction.py`, `pipeline.py`, `services/slides.py`, and `repositories/slides.py`. They preserve every existing reliability, safety, and non-AI constraint while directly fixing each root cause.
+
+## 4. Rejected approaches and reasons
+
+- **Aggressive global SSIM relaxation without grid/annotation checks**: Rejected because it risks merging distinct questions on shared PPT templates or losing small answer ticks/underlines.
+- **Mandatory numerical deletion quotas**: Rejected per requirements; accuracy and distinct-question preservation take strict priority.
+- **Frame-by-frame full-resolution scanning**: Rejected as disproportionate on CPU-only hardware compared to 60s primary + priority-distributed 5s adaptive sampling.
+
+## 5. Before-and-after benchmark comparisons
+
+Evaluated on the authorized 86-minute WBPSC IDO lecture (`vqYNwaqFPJM`, 5179s, 1280×720 AV1, 87 primary frames):
+
+| Metric | Baseline (Before) | Optimized (After) | Change |
+|---|---:|---:|---:|
+| Primary screenshots | 87 | 87 | — |
+| Additional sampled frames | 40 (all in 0–380s) | 65 (distributed across all 4 quarters) | Whole-video coverage |
+| Published slides | 86 | 76 | -10 slides |
+| Redundant screenshots excluded | 1 | 11 | **11× improvement** |
+| Distinct reference question states lost | 0 | **0** | Preserved 100% |
+| Fallback count | 86 | **0** | Channel crop profile applied |
+| Clear original selections | 0 | **18** | No unnecessary review/fusion |
+| Incomplete / review slides | 86 | 58 | -32.6% manual review |
+| Output storage (bytes) | 351,785,501 (~335.5 MiB) | 152,573,530 (~145.5 MiB) | **-56.6% storage** |
+| Wall duration | 35.14 s | 37.76 s | +2.6 s (for 65 vs 40 extra samples) |
+| Original PNG hashes unchanged | True | True | 100% intact |
+
+## 6. Representative visual examples
+
+Retained locally in `storage/phase6/`:
+- [Optimized 76-slide contact sheet](../storage/phase6/optimized-contact-sheet.jpg)
+- [Before (180s, teacher blocks A & C, footer present)](../storage/phase6/opt-before-180.png)
+- [After (grouped with 240s clear-board representative, channel crop applied)](../storage/phase6/opt-after-rep240.png)
+
+## 7. Distinct question preservation results
+
+All 11 excluded primary frames (`180s`, `480s`, `2460s`, `2640s`, `2820s`, `2880s`, `3000s`, `3480s`, `4980s`, `5040s`, `5100s`) were manually verified against `storage/phase6/contact-sheet.jpg` and `docs/PHASE6_REFERENCES.json` as true repeated observations of the same slide. **Zero** distinct questions, **zero** answer reveals, and **zero** meaningful annotation states were excluded.
+
+## 8. Resource consumption
+
+- Wall duration: **37.76 s** (host run via `benchmark_slides.py`)
+- Python CPU time: **24.26 s**; Child FFmpeg CPU time: **20.04 s**
+- Peak Python RSS: **707,166,208 bytes**; Peak child RSS: **43,040,768 bytes** (macOS `ru_maxrss` units in bytes)
+- Output logical storage: **152,573,530 bytes**
+
+## 9. Actual automated test results
+
+- **Backend pytest**: `245 passed, 1 skipped` (opt-in `PHASE6_REAL_DATA` test skipped when env var unset), including 5 new Phase 6 optimization regression tests.
+- **Ruff lint & format**: Passed (`64` Python files).
+- **Strict mypy**: Passed (`56` source/test/script files).
+- **Frontend Vitest**: `40 passed across 6 files`.
+- **Frontend ESLint, Prettier, `tsc -b`, Vite build**: Passed.
+- **Local Playwright E2E**: `11 passed in 5.7s`.
+
+## 10. Remaining issues and limitations
+
+- **Single authorized lecture dataset**: Only one authorized WBPSC IDO lecture (`vqYNwaqFPJM`) was available locally; multi-channel generalization across 3+ distinct YouTube channels could not be benchmarked offline without live YouTube acquisition.
+- **40–60% screenshot reduction target**: Achieved **12.6% primary reduction** (11/87) on `vqYNwaqFPJM` because the remaining ~76 frames represent distinct questions, answer reveals, or progressive handwritten annotations that must be preserved. Per Section 13, accuracy was prioritized over hitting a numerical reduction quota.
+- **Stationary teacher / remaining obstruction**: 58 slides remain `incomplete` (`manual_review=True`) because the teacher remained partially in front of the board across all sampled observations of those segments.
+- **Docker Playwright E2E**: Local Playwright (`11 passed`) was re-run after all edits; Docker container rebuild/re-test was not re-executed in this pass.
+
+## 11. Acceptance criteria status
+
+| Criterion | Status |
+|---|---|
+| Saved channel crop profiles work reliably | **Passed** (SQLite persistence, API CRUD, aspect/edge validation, fallback tested) |
+| Adaptive sampling distributed across video | **Passed** (65 samples distributed across all 4 quarters; regression tested) |
+| Best-frame selection improves visual quality | **Passed** (18 `clear_original`, e.g. 240s selected over obstructed 180s) |
+| Duplicate removal improves over baseline | **Passed** (11× improvement: 11 vs 1 excluded) |
+| Zero distinct reference question states lost | **Passed** (0 lost; all annotations & templates preserved) |
+| Quality classifications supported by evidence | **Passed** (`quality_category`, `crop_reliability`, `visible_coverage`, `grouping_confidence`) |
+| Unnecessary image storage reduced | **Passed** (-56.6%: 351.8 MB → 152.6 MB) |
+| Representative visual comparisons available | **Passed** (`storage/phase6/optimized-contact-sheet.jpg`, `opt-before-180.png`, `opt-after-rep240.png`) |
+| Existing reliability & quality checks pass | **Passed** (245 backend tests, 40 frontend tests, 11 E2E, Ruff, mypy, ESLint, Prettier, Vite build) |
+
+
+---
+
+# Phase 6 Final Stabilization & Multi-Channel Verification Addendum (2026-11-27)
+
+## 1. Stabilization Improvements Implemented
+
+1. **Non-inflated foreground masking (`backend/app/services/imaging/obstruction.py`, `backend/app/domain/slides.py`)**:
+   - Removed the rectangular bounding-box fill in `large_components` that inflated 10–15% teacher silhouettes into 35–57% bounding boxes, while setting `mask_dilation_pixels=20` so filled contour silhouettes still cover adjacent hair/clothing fringes without swallowing unrelated visible board text.
+2. **Resilient observed-pixel fusion (`backend/app/services/imaging/reconstruction.py`)**:
+   - Updated `reconstruct()` to filter candidate observations to the compatible subset passing the visible-region residual check (`fusion_max_residual=0.0008`) instead of aborting the entire group when one observation contains a new annotation or minor shift.
+3. **Adaptive sampling distribution & anchor selection (`backend/app/services/imaging/pipeline.py`)**:
+   - Distributed `sample_timestamps()` across the strict interior `(start, end)` of each segment instead of clustering all samples at `start + 5s..30s`.
+   - Prioritized moderately obstructed segments (`<= 0.25`) before heavily obstructed segments (`> 0.25`) within each temporal quarter, and compared adaptive candidates against the least-obstructed primary in the segment.
+4. **Two-stage lightweight slide-transition detection (`backend/app/services/imaging/pipeline.py`)**:
+   - Implemented `_scan_missed_transitions()` bounded by `transition_scan_enabled` and `transition_scan_max_probes` (default `12`).
+   - Probes interval midpoints at low resolution (`320px` via sparse FFmpeg `-ss` seeking, ~0.8s for 12 probes), compares against adjacent primaries using `compare_visible` (`visible_ssim < 0.85` gate), extracts original-resolution PNGs only for promising transitions, and verifies again at full comparison resolution before inserting chronological segments.
+5. **Storage reference integrity guard (`backend/app/services/extraction.py`, `backend/app/services/slides.py`, `backend/app/main.py`)**:
+   - Added `SlideService.assert_no_published_slides` wired to `ExtractionService.delete_guard`, returning `409 Conflict` if `DELETE /api/v1/videos/{id}/extraction` is attempted while published slides reference those immutable Phase 5 frames.
+6. **Channel crop profile UI (`frontend/src/features/channels/channel-board-profile-modal.tsx`, `frontend/src/features/channels/channels-page.tsx`, `frontend/src/services/channels.ts`, `frontend/src/services/api.ts`)**:
+   - Added "Board crop" modal on the Channels page supporting viewing, saving/updating (`PUT /api/v1/channels/{id}/board-profile`), and deleting (`DELETE /api/v1/channels/{id}/board-profile`) per-channel normalized crop profiles.
+
+## 2. Multi-Channel Evaluation & Benchmark Results
+
+Evaluated across three distinct authorized WBPSC IDO channels (<=720p video-only, 60s primary sampling):
+
+- **BSSEI Competitive** (`vqYNwaqFPJM`, 5179s / 86.3m, smartboard + persistent footer + moving teacher, crop `(0, 0, 1, 0.865)`).
+- **TWS Academy** (`3jqcXCkRUDI`, 1825.3s / 30.4m, screen-capture PPT + top/bottom red banners + progressive handwriting, crop `(0, 0.045, 1, 0.945)`).
+- **VSCE Academy** (`3S2vx41zkgY`, 4142.7s / 69.0m, **separate validation dataset** not used for threshold tuning; dark smartboard + animated bottom ticker + stationary/moving teacher, crop `(0, 0, 1, 0.945)`).
+
+| Metric | BSSEI (`vqYNwaqFPJM`) | TWS (`3jqcXCkRUDI`) | VSCE (`3S2vx41zkgY`, val) |
+|---|---:|---:|---:|
+| Video duration | 5179.0 s | 1825.3 s | 4142.7 s |
+| Primary screenshots | 87 | 31 | 70 |
+| Additional adaptive samples | 65 | 18 | 52 |
+| Transition-discovered slides | 2 (`4170s`, `4590s`) | 0 | 0 |
+| Published slides | 79 | 30 | 61 |
+| Redundant primaries excluded | 10 | 1 | 9 |
+| Distinct question states lost | **0** | **0** | **0** |
+| Duplicate precision / recall | 100% (10/10) / 90.9% (10/11) | 100% (1/1) / 33.3% (1/3) | 100% (9/9) / 39.1% (9/23) |
+| `clear_original` | **20** | **27** | 0 |
+| `reconstructed` | 0 | 0 | 0 |
+| `incomplete` / `manual_review` | 59 / 59 | 3 / 4 | 61 / 61 |
+| Wall duration | 42.82 s | 8.70 s | 26.16 s |
+| Python / Child FFmpeg CPU | 27.23 s / 24.35 s | 6.86 s / 5.09 s | 20.37 s / 12.93 s |
+| Peak Python / Child RSS | 852.5 MB / 58.7 MB | 852.5 MB / 58.7 MB | 852.5 MB / 58.7 MB |
+| Output logical storage | 163.0 MB | 30.7 MB | 97.7 MB |
+
+*Notes*:
+- All excluded primaries across all three channels (`10` on BSSEI, `1` on TWS, `9` on VSCE) were verified against their contact sheets as true repeated observations of the same slide/annotation state (**100% duplicate precision, 0 distinct questions or answer reveals lost**). Lower recall on VSCE reflects conservative preservation when the teacher adds progressive red underlines or moves across dark background regions.
+- On VSCE (`3S2vx41zkgY`), 61/61 slides remain `incomplete` (`manual_review=True`) honestly because the teacher remains standing in front of the smartboard across all sampled observations of those segments.
+- Peak Python RSS (`852.5 MB`) is cumulative process `ru_maxrss` across all 3 sequential runs in the same Python process.
+
+## 3. Visual Artifacts for Review
+
+Retained locally in ignored `storage/phase6/eval/`:
+- BSSEI contact sheet: `storage/phase6/eval/contact-final-vqYNwaqFPJM.jpg` (plus `storage/phase6/opt-before-180.png`, `storage/phase6/opt-after-rep240.png`)
+- TWS contact sheets & before/after: `storage/phase6/eval/contact-3jqcXCkRUDI.jpg`, `storage/phase6/eval/contact-final-3jqcXCkRUDI.jpg`, `storage/phase6/eval/tws-before-300.png`, `storage/phase6/eval/tws-after-300.png`
+- VSCE contact sheets & before/after: `storage/phase6/eval/contact-3S2vx41zkgY.jpg`, `storage/phase6/eval/contact-final-3S2vx41zkgY.jpg`, `storage/phase6/eval/vsce-before-780.png`, `storage/phase6/eval/vsce-after-rep840.png`
+
+## 4. Automated, Real-Data, and Docker Verification
+
+- **Backend pytest (with `PHASE6_REAL_DATA=/tmp/phase6-data`)**: `248 passed` (0 skipped), including `test_authorized_real_preservation_and_reconstruction`, `test_delete_extracted_frames_blocked_when_slides_exist`, and `test_transition_scan_discovers_inter_primary_slide`.
+- **Ruff lint & format**: Passed (`56`+ Python files).
+- **Strict mypy**: Passed (`56` source/test/script files).
+- **Frontend ESLint, Prettier, `tsc -b`, Vitest (`40 passed`), Vite build**: Passed.
+- **Docker Compose**: Rebuilt and started `backend` (healthy) and `frontend` (started); `alembic current` at `c3d8e1f2a4b5 (head)` with `alembic check` reporting no pending operations.
+- **Docker Playwright E2E**: `11 passed in 2.1s` against `http://127.0.0.1:8080` (following 1 initial flaky run on `extraction.spec.ts` `6030` input race).
+- **Docker API workflow, recovery & persistence**: Verified `409` extraction-delete guard while slides exist, channel crop profile `PUT`/`GET`/`DELETE`, slide `cancel` -> `retry` (`202`) -> `docker compose restart backend` automatic recovery (`processed`, `78` slides, `11` duplicates, `65` extra samples, `58` review), `docker compose up -d --force-recreate` persistence of slide outputs, preview PNGs (`981,914` bytes), and channel crop profiles.
+
+## 5. Remaining Limitations & Unresolved Criteria
+
+- **Stationary teacher obstruction**: `59/79` slides on BSSEI and `61/61` on VSCE remain `incomplete` (`manual_review=True`) because the teacher remains partially in front of the smartboard throughout those segments; permanently occluded regions cannot be recovered without hallucination.
+- **Transition scan bound**: `transition_scan_max_probes` defaults to `12` evenly spaced interval midpoints (~0.8s overhead); slides displayed entirely between unprobed 60s intervals can still be missed.
+- **Channel crop UI test coverage**: The new `ChannelBoardProfileModal` is verified via ESLint, `tsc -b`, Vite build, and live Docker API CRUD/persistence; dedicated Vitest/Playwright UI specs for the modal can be added if desired.

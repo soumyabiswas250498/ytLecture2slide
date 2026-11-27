@@ -16,6 +16,7 @@ import {
   LoadingState,
 } from "@/components/shared/states";
 import { Button } from "@/components/ui/button";
+import { ChannelBoardProfileModal } from "@/features/channels/channel-board-profile-modal";
 import { ChannelDeleteModal } from "@/features/channels/channel-delete-modal";
 import { ChannelFormModal } from "@/features/channels/channel-form-modal";
 import { ChannelImportModal } from "@/features/channels/channel-import-modal";
@@ -62,6 +63,7 @@ export function ChannelsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
+  const [profileChannel, setProfileChannel] = useState<Channel | null>(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
@@ -521,6 +523,15 @@ export function ChannelsPage() {
                               type="button"
                               variant="outline"
                               size="sm"
+                              aria-label={`Board crop ${channel.name}`}
+                              onClick={() => setProfileChannel(channel)}
+                            >
+                              Board crop
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
                               aria-label={`Edit ${channel.name}`}
                               onClick={() => {
                                 setEditingChannel(channel);
@@ -618,6 +629,11 @@ export function ChannelsPage() {
         onConfirm={async (channelId) => {
           await deleteMutation.mutateAsync(channelId).catch(() => undefined);
         }}
+      />
+
+      <ChannelBoardProfileModal
+        channel={profileChannel}
+        onClose={() => setProfileChannel(null)}
       />
 
       <ChannelImportModal

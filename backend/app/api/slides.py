@@ -1,5 +1,6 @@
 """HTTP boundary for slide jobs and generation-consistent comparison previews."""
 
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.domain.downloads import VideoNotFoundError
 from app.domain.extraction import ExtractionError
 from app.domain.slides import SlideConfig, SlideState
-from app.services.imaging.pipeline import load_image, read_slide_manifest
+from app.services.imaging.pipeline import load_image, read_slide_manifest, resolve_slide_image
 from app.services.slides import SlideService
 
 router = APIRouter(prefix="/api/v1/videos", tags=["slides"])
@@ -107,10 +108,12 @@ def preview(video_id: int, generation: str, filename: str, jobs: Service) -> Fil
             slide.original_image_path,
             slide.obstruction_mask_path,
         )
+        if name is not None
     }
     if filename not in allowed:
         raise HTTPException(404, "Slide image not found.")
-    load_image(directory / filename, manifest.configuration)
+    target = resolve_slide_image(directory, Path(manifest.extraction_directory), filename)
+    load_image(target, manifest.configuration)
     return FileResponse(
-        directory / filename, media_type="image/png", headers={"Cache-Control": "private, no-cache"}
+        target, media_type="image/png", headers={"Cache-Control": "private, no-cache"}
     )

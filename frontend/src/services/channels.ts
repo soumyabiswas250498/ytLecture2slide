@@ -5,6 +5,7 @@ import {
   apiGet,
   apiPatch,
   apiPost,
+  apiPut,
   apiUpload,
 } from "@/services/api";
 
@@ -141,4 +142,52 @@ export function exportChannelsCsv(
 
 export function downloadChannelsTemplate(): Promise<string> {
   return apiDownloadText("channels/template");
+}
+
+export const cropSchema = z.object({
+  left: z.number(),
+  top: z.number(),
+  right: z.number(),
+  bottom: z.number(),
+});
+
+export const boardProfileSchema = z.object({
+  channel_id: z.number(),
+  crop: cropSchema,
+  corners: z
+    .array(z.tuple([z.number(), z.number()]))
+    .nullable()
+    .optional(),
+  reference_width: z.number().nullable().optional(),
+  reference_height: z.number().nullable().optional(),
+  validated: z.boolean(),
+  updated_at: z.string().nullable().optional(),
+});
+
+export type BoardProfile = z.infer<typeof boardProfileSchema>;
+
+export function getBoardProfile(
+  channelId: number,
+  signal?: AbortSignal,
+): Promise<BoardProfile | null> {
+  return apiGet(
+    `channels/${channelId}/board-profile`,
+    boardProfileSchema.nullable(),
+    signal,
+  );
+}
+
+export function upsertBoardProfile(
+  channelId: number,
+  crop: { left: number; top: number; right: number; bottom: number },
+): Promise<BoardProfile> {
+  return apiPut(
+    `channels/${channelId}/board-profile`,
+    { crop },
+    boardProfileSchema,
+  );
+}
+
+export function deleteBoardProfile(channelId: number): Promise<void> {
+  return apiDelete(`channels/${channelId}/board-profile`);
 }

@@ -15,9 +15,16 @@ import cv2
 from app.core.config import Settings
 from app.domain.downloads import DownloadError, VideoNotFoundError
 from app.domain.extraction import ExtractionCancelled, ExtractionError
-from app.domain.slides import SlideConfig, SlideConflict, SlideError, SlideManifest, SlideState
+from app.domain.slides import (
+    ChannelBoardProfile,
+    SlideConfig,
+    SlideConflict,
+    SlideError,
+    SlideManifest,
+    SlideState,
+)
 from app.infrastructure.frame_extractor import read_manifest
-from app.repositories.slides import SlideRepository
+from app.repositories.slides import ChannelBoardProfileRepository, SlideRepository
 from app.repositories.videos import VideoRepository
 from app.services.extraction import ExtractionService, _StopSignal
 from app.services.imaging.pipeline import SlideProcessor, read_slide_manifest
@@ -36,9 +43,11 @@ class SlideService:
         processor: SlideProcessor,
         settings: Settings,
         media_lock: threading.RLock,
+        board_profiles: ChannelBoardProfileRepository | None = None,
     ) -> None:
         self.videos = videos
         self.repository = repository
+        self.board_profiles = board_profiles
         self.extraction = extraction
         self.processor = processor
         self.settings = settings
@@ -61,6 +70,14 @@ class SlideService:
         if video_id in self.events or state.requested or state.status == "processing":
             raise SlideConflict("Slide processing is queued or active for this video.")
 
+    def assert_no_published_slides(self, video_id: int) -> None:
+        self.assert_inactive(video_id)
+        state = self.repository.get(video_id)
+        if state.output_directory:
+            raise SlideConflict(
+                "Extracted frames are referenced by published slides; delete slides first."
+            )
+
     def start(
         self,
         video_id: int,
@@ -68,6 +85,7 @@ class SlideService:
         *,
         retry: bool = False,
         reprocess: bool = False,
+        save_channel_profile: bool = True,
     ) -> SlideState:
         with self.lock:
             if self.stopping.is_set():
@@ -82,6 +100,11 @@ class SlideService:
             if state.output_directory and not (retry or reprocess):
                 raise SlideConflict("Slides already exist; explicitly request reprocessing.")
             video = self.videos.get_by_id(video_id)
+            saved_profile = (
+                self.board_profiles.get(video.channel_id)
+                if video and video.channel_id and self.board_profiles is not None
+                else None
+            )
             profile = (
                 self.settings.slide_channel_profiles.get(str(video.channel_id)) if video else None
             )
@@ -90,12 +113,45 @@ class SlideService:
                 if retry
                 else profile or self.settings.slide_processing
             )
+            if not retry and saved_profile is not None and (config is None or config.crop is None):
+                aspect = (
+                    saved_profile.reference_width / saved_profile.reference_height
+                    if saved_profile.reference_width and saved_profile.reference_height
+                    else None
+                )
+                base = base.model_copy(
+                    update={
+                        "profile_crop": saved_profile.crop,
+                        "profile_reference_aspect": aspect,
+                        "corners": saved_profile.corners,
+                    }
+                )
             if config is not None:
                 overrides = base.model_dump()
                 overrides.update(config.model_dump(exclude_unset=True))
                 config = SlideConfig.model_validate(overrides)
             else:
                 config = base
+            if (
+                not retry
+                and save_channel_profile
+                and video
+                and video.channel_id
+                and self.board_profiles is not None
+                and config.crop is not None
+            ):
+                ref_w = inputs.frames[0].width if inputs.frames else None
+                ref_h = inputs.frames[0].height if inputs.frames else None
+                self.board_profiles.upsert(
+                    ChannelBoardProfile(
+                        channel_id=video.channel_id,
+                        crop=config.crop,
+                        corners=config.corners,
+                        reference_width=ref_w,
+                        reference_height=ref_h,
+                        validated=True,
+                    )
+                )
             self.root.mkdir(parents=True, exist_ok=True)
             self._directory(video_id)
             if shutil.disk_usage(self.root).free < config.min_free_disk_mb * 1024 * 1024:

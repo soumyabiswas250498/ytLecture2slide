@@ -39,7 +39,7 @@ Status: Phase 1, Phase 2, Phase 3, and Phase 4 verified; final verification reco
 
 ## Phase 6 — Smartboard processing
 
-- Status: **Verified within documented conservative limits (2026-11-27)**. Backend 241 tests (including opt-in authorized data), frontend 40 tests, local/Docker browser 11 tests each, lint/types/build/migrations and 489-hash Docker persistence passed. The 87-frame lecture produced 86 review candidates with 40 extra samples and one partial fusion. See docs/PHASE6_REPORT.md. No Phase 7 work is authorized.
+- Status: **Stabilized and verified within documented limits (2026-11-27)**. Backend 248 tests (248 passed with `PHASE6_REAL_DATA`, 0 skipped), frontend 40 tests, Docker Playwright 11 tests, lint/types/build/migrations, Docker restart recovery & container recreation persistence, and 3-channel evaluation (`BSSEI Competitive vqYNwaqFPJM`, `TWS Academy 3jqcXCkRUDI`, `VSCE Academy 3S2vx41zkgY`) passed with 0 distinct question states lost. See docs/PHASE6_REPORT.md. No Phase 7 work is authorized.
 
 - Scope: crop and perspective correction, same-slide grouping, teacher obstruction reduction through temporal/masked fusion, adaptive five-second sampling, conservative duplicate detection, quality flags and fallback.
 - Acceptance: synthetic fixtures and representative authorized lectures demonstrate behavior; distinct questions and meaningful annotations are retained; uncertain reconstruction falls back to originals; report measured outcomes, failure examples and thresholds. Do not claim permanently hidden text is recovered. User visual review of real examples is required before approval to advance to Phase 7.

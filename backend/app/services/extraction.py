@@ -57,6 +57,7 @@ class ExtractionService:
         media_lock: threading.RLock,
     ) -> None:
         self.processing_guard: Callable[[int], None] | None = None
+        self.delete_guard: Callable[[int], None] | None = None
         self._videos = videos
         self._repo = repository
         self._extractor = extractor
@@ -212,7 +213,9 @@ class ExtractionService:
     def delete(self, video_id: int) -> ExtractionState:
         with self._lock:
             self.state(video_id)
-            if self.processing_guard:
+            if self.delete_guard:
+                self.delete_guard(video_id)
+            elif self.processing_guard:
                 self.processing_guard(video_id)
             self.assert_inactive(video_id)
             assert self._settings.frame_dir is not None

@@ -20,7 +20,7 @@ from app.infrastructure.media_probe import FFprobeValidator
 from app.infrastructure.storage import Storage
 from app.infrastructure.ytdlp_downloader import YtDlpVideoDownloader
 from app.repositories.extractions import ExtractionRepository
-from app.repositories.slides import SlideRepository
+from app.repositories.slides import ChannelBoardProfileRepository, SlideRepository
 from app.repositories.videos import VideoRepository
 from app.services.downloader import VideoDownloadService
 from app.services.extraction import ExtractionService
@@ -64,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             slide_service = SlideService(
                 videos=VideoRepository(sessions),
                 repository=SlideRepository(sessions),
+                board_profiles=ChannelBoardProfileRepository(sessions),
                 extraction=extraction_service,
                 settings=config,
                 media_lock=media_lock,
@@ -76,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.slide_service = slide_service
             extraction_service.processing_guard = slide_service.assert_inactive
+            extraction_service.delete_guard = slide_service.assert_no_published_slides
             slide_service.recover()
 
             def media_guard(video_id: int) -> None:

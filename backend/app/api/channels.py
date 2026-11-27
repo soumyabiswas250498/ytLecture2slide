@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFi
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.channels import ChannelEntity, InvalidCsvError
+from app.domain.slides import ChannelBoardProfile, Crop, Normalized
 from app.repositories.channels import ChannelRepository
+from app.repositories.slides import ChannelBoardProfileRepository
 from app.services.channels import ChannelService
 
 router = APIRouter(prefix="/api/v1/channels", tags=["channels"])
@@ -228,4 +230,51 @@ def update_channel(
 @router.delete("/{channel_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_channel(channel_id: int, service: ServiceDep) -> Response:
     service.delete_channel(channel_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class BoardProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    crop: Crop
+    corners: list[tuple[Normalized, Normalized]] | None = Field(
+        default=None, min_length=4, max_length=4
+    )
+    reference_width: int | None = Field(default=None, ge=16)
+    reference_height: int | None = Field(default=None, ge=16)
+
+
+def _profile_repo(request: Request) -> ChannelBoardProfileRepository:
+    return ChannelBoardProfileRepository(request.app.state.sessions)
+
+
+@router.get("/{channel_id}/board-profile", response_model=ChannelBoardProfile | None)
+def get_board_profile(
+    channel_id: int, request: Request, service: ServiceDep
+) -> ChannelBoardProfile | None:
+    service.get_channel(channel_id)
+    return _profile_repo(request).get(channel_id)
+
+
+@router.put("/{channel_id}/board-profile", response_model=ChannelBoardProfile)
+def upsert_board_profile(
+    channel_id: int, payload: BoardProfileRequest, request: Request, service: ServiceDep
+) -> ChannelBoardProfile:
+    service.get_channel(channel_id)
+    return _profile_repo(request).upsert(
+        ChannelBoardProfile(
+            channel_id=channel_id,
+            crop=payload.crop,
+            corners=payload.corners,
+            reference_width=payload.reference_width,
+            reference_height=payload.reference_height,
+            validated=True,
+        )
+    )
+
+
+@router.delete("/{channel_id}/board-profile", status_code=status.HTTP_204_NO_CONTENT)
+def delete_board_profile(channel_id: int, request: Request, service: ServiceDep) -> Response:
+    service.get_channel(channel_id)
+    _profile_repo(request).delete(channel_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
