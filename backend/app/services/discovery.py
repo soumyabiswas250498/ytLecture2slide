@@ -105,7 +105,7 @@ class DiscoveryService:
     # Public API
     # ------------------------------------------------------------------
 
-    def discover_all_channels(self) -> DiscoveryRunSummary:
+    def discover_all_channels(self, *, lookback_days: int | None = None) -> DiscoveryRunSummary:
         """Run discovery for every active registered channel."""
         self._acquire_lock()
         summary = DiscoveryRunSummary()
@@ -115,7 +115,7 @@ class DiscoveryService:
             summary.channels_checked = len(channels)
             for channel in channels:
                 try:
-                    self._discover_channel(channel, summary)
+                    self._discover_channel(channel, summary, lookback_days=lookback_days)
                 except QuotaExhaustedError as exc:
                     logger.warning("Quota exhausted: %s", exc)
                     summary.errors.append(str(exc))
@@ -157,7 +157,13 @@ class DiscoveryService:
     # Channel-level discovery
     # ------------------------------------------------------------------
 
-    def _discover_channel(self, channel: ChannelEntity, summary: DiscoveryRunSummary) -> None:
+    def _discover_channel(
+        self,
+        channel: ChannelEntity,
+        summary: DiscoveryRunSummary,
+        *,
+        lookback_days: int | None = None,
+    ) -> None:
         """Resolve, search and persist videos for one channel; mutates *summary*."""
         # 1. Resolve channel ID.
         youtube_channel_id = self._ensure_channel_id(channel, summary)
@@ -165,7 +171,10 @@ class DiscoveryService:
             return  # error already recorded in summary
 
         # 2. Determine search window.
-        published_after = datetime.now(UTC) - timedelta(days=self._settings.discovery_lookback_days)
+        effective_lookback = (
+            lookback_days if lookback_days is not None else self._settings.discovery_lookback_days
+        )
+        published_after = datetime.now(UTC) - timedelta(days=effective_lookback)
         keyword = channel.search_keyword or self._settings.default_search_keyword
         discovered_at = datetime.now(UTC)
 

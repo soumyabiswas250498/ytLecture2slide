@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/states";
 import { ChannelsPage } from "@/features/channels/channels-page";
 import { Dashboard } from "@/features/dashboard/dashboard";
+import { ProcessingJobsPage } from "@/features/jobs/processing-jobs-page";
 import { PdfLibraryPage } from "@/features/library/pdf-library-page";
 import { SettingsPage } from "@/features/settings/settings-page";
 import { VideosPage } from "@/features/videos/videos-page";
@@ -31,6 +32,7 @@ const futureSections = sections.filter(
     path !== "/" &&
     path !== "/channels" &&
     path !== "/videos" &&
+    path !== "/jobs" &&
     path !== "/library" &&
     path !== "/settings",
 );
@@ -72,6 +74,7 @@ export function App() {
         <Route index element={<Dashboard />} />
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/videos" element={<VideosPage />} />
+        <Route path="/jobs" element={<ProcessingJobsPage />} />
         <Route path="/library" element={<PdfLibraryPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         {futureSections.map(({ title, path }) => (

@@ -61,6 +61,7 @@ const DOWNLOAD_STATUS_TONE: Record<DownloadStatus, StatusTone> = {
   downloaded: "success",
   failed: "error",
   cancelled: "warning",
+  cleaned: "neutral",
 };
 
 const PROCESSING_OPTIONS: readonly SelectOption<ProcessingStatus | "">[] = [
@@ -78,6 +79,7 @@ const DOWNLOAD_OPTIONS: readonly SelectOption<DownloadStatus | "">[] = [
   { value: "pending", label: "Not downloaded" },
   { value: "downloading", label: "Downloading" },
   { value: "downloaded", label: "Downloaded" },
+  { value: "cleaned", label: "Cleaned" },
   { value: "failed", label: "Failed" },
   { value: "cancelled", label: "Cancelled" },
 ];

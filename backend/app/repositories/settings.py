@@ -9,10 +9,12 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.domain.exclusion import ExclusionSettings
 from app.domain.pdfs import PdfCompressionMode, PdfConfig
+from app.domain.pipeline import PipelineSettings
 from app.infrastructure.models import AppSettingRecord, utc_now
 
 EXCLUSION_KEYWORDS_KEY = "video_exclusion_keywords"
 PDF_GENERATION_SETTINGS_KEY = "pdf_generation_settings"
+PIPELINE_SETTINGS_KEY = "pipeline_settings"
 
 
 def _ensure_utc(value: datetime | None) -> datetime | None:
@@ -108,3 +110,46 @@ class SettingsRepository:
             session.refresh(record)
             updated = _ensure_utc(record.updated_at) or now
             return config, updated
+
+    def get_pipeline_settings(
+        self, default_settings: PipelineSettings | None = None
+    ) -> tuple[PipelineSettings, datetime | None]:
+        base = default_settings if default_settings is not None else PipelineSettings()
+        with self._sessions() as session:
+            record = session.get(AppSettingRecord, PIPELINE_SETTINGS_KEY)
+            if record is None:
+                return base, None
+            try:
+                parsed = json.loads(record.value_json)
+            except json.JSONDecodeError:
+                return base, _ensure_utc(record.updated_at)
+            if not isinstance(parsed, dict):
+                return base, _ensure_utc(record.updated_at)
+            merged = base.model_dump()
+            merged.update(parsed)
+            try:
+                return PipelineSettings.model_validate(merged), _ensure_utc(record.updated_at)
+            except Exception:
+                return base, _ensure_utc(record.updated_at)
+
+    def save_pipeline_settings(
+        self, settings_obj: PipelineSettings
+    ) -> tuple[PipelineSettings, datetime]:
+        now = utc_now()
+        payload = settings_obj.model_dump_json()
+        with self._sessions() as session:
+            record = session.get(AppSettingRecord, PIPELINE_SETTINGS_KEY)
+            if record is None:
+                record = AppSettingRecord(
+                    key=PIPELINE_SETTINGS_KEY,
+                    value_json=payload,
+                    updated_at=now,
+                )
+                session.add(record)
+            else:
+                record.value_json = payload
+                record.updated_at = now
+            session.commit()
+            session.refresh(record)
+            updated = _ensure_utc(record.updated_at) or now
+            return settings_obj, updated

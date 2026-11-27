@@ -77,6 +77,12 @@ def _to_entity(record: VideoRecord) -> VideoEntity:
         youtube_channel_id=record.youtube_channel_id,
         is_excluded=record.is_excluded,
         excluded_keywords=_parse_excluded_keywords(record.matched_exclusion_keywords),
+        intermediates_cleaned=record.intermediates_cleaned,
+        intermediates_cleaned_at=(
+            _ensure_utc(record.intermediates_cleaned_at)
+            if record.intermediates_cleaned_at is not None
+            else None
+        ),
     )
 
 
@@ -400,6 +406,58 @@ class VideoRepository:
             if records:
                 session.commit()
             return len(records)
+
+    def mark_intermediates_cleaned(
+        self,
+        video_id: int,
+        *,
+        cleaned: bool,
+        cleaned_at: datetime | None,
+        clear_download_path: bool = False,
+        download_status: DownloadStatus | None = None,
+    ) -> VideoEntity | None:
+        with self._sessions() as session:
+            record = session.get(VideoRecord, video_id)
+            if record is None:
+                return None
+            record.intermediates_cleaned = cleaned
+            record.intermediates_cleaned_at = cleaned_at
+            if clear_download_path:
+                record.local_video_path = None
+            if download_status is not None:
+                record.download_status = download_status.value
+            record.updated_at = utc_now()
+            session.commit()
+            session.refresh(record)
+            return _to_entity(record)
+
+    def update_processing_status(
+        self, video_id: int, status: ProcessingStatus
+    ) -> VideoEntity | None:
+        with self._sessions() as session:
+            record = session.get(VideoRecord, video_id)
+            if record is None:
+                return None
+            record.processing_status = status.value
+            record.updated_at = utc_now()
+            session.commit()
+            session.refresh(record)
+            return _to_entity(record)
+
+    def list_pipeline_candidates(self, *, min_duration_seconds: int) -> list[VideoEntity]:
+        """Return videos eligible for automated pipeline evaluation (non-live, > min_duration)."""
+        with self._sessions() as session:
+            rows = session.scalars(
+                select(VideoRecord)
+                .where(
+                    VideoRecord.livestream_status.notin_(
+                        [LivestreamStatus.UPCOMING.value, LivestreamStatus.LIVE.value]
+                    ),
+                    VideoRecord.duration_seconds > min_duration_seconds,
+                )
+                .order_by(VideoRecord.published_at.desc(), VideoRecord.id.asc())
+            ).all()
+            return [_to_entity(row) for row in rows]
 
     @staticmethod
     def _build_filters(

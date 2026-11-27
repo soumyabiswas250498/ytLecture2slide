@@ -62,6 +62,56 @@ beforeEach(() => {
           ),
         );
       }
+      if (url.includes("/settings/pipeline")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              scheduler_enabled: true,
+              scheduler_frequency: "daily",
+              scheduler_time: "03:00",
+              timezone: "Asia/Kolkata",
+              discovery_lookback_days: 7,
+              extraction_interval_seconds: 60,
+              pipeline_concurrent_limit: 1,
+              pipeline_retry_attempts: 3,
+              auto_cleanup_enabled: true,
+              min_free_disk_mb: 500,
+              updated_at: null,
+            }),
+          ),
+        );
+      }
+      if (url.includes("/pipeline/scheduler")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              enabled: true,
+              frequency: "daily",
+              time: "03:00",
+              timezone: "Asia/Kolkata",
+              next_run_at: null,
+              last_run_at: null,
+              is_running: false,
+            }),
+          ),
+        );
+      }
+      if (url.includes("/pipeline/runs/active")) {
+        return Promise.resolve(new Response(JSON.stringify(null)));
+      }
+      if (url.includes("/pipeline/runs")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              page_size: 15,
+              total_pages: 1,
+            }),
+          ),
+        );
+      }
       if (url.includes("/settings/exclusion-keywords")) {
         return Promise.resolve(
           new Response(
@@ -140,16 +190,14 @@ it("navigates to Channels and every future section without fabricated data", asy
     "page",
   );
 
-  for (const name of ["Processing Jobs"]) {
-    await user.click(screen.getByRole("link", { name }));
-    expect(
-      screen.getByRole("heading", { name: `${name} is not available yet` }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-  }
+  await user.click(screen.getByRole("link", { name: "Processing Jobs" }));
+  expect(
+    await screen.findByRole("heading", { name: "Processing Jobs", level: 1 }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Processing Jobs" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 
   await user.click(screen.getByRole("link", { name: "Settings" }));
   expect(

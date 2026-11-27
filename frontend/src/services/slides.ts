@@ -4,7 +4,14 @@ import { config } from "@/lib/config";
 
 const stateSchema = z.object({
   video_id: z.number(),
-  status: z.enum(["pending", "processing", "processed", "failed", "cancelled"]),
+  status: z.enum([
+    "pending",
+    "processing",
+    "processed",
+    "failed",
+    "cancelled",
+    "cleaned",
+  ]),
   requested: z.boolean(),
   progress: z.number(),
   input_count: z.number(),

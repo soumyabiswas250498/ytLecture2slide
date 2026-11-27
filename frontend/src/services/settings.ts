@@ -58,3 +58,31 @@ export function updatePdfSettings(
 ): Promise<PdfSettingsResponse> {
   return apiPut("settings/pdf", { compression }, pdfSettingsSchema);
 }
+
+export const pipelineSettingsSchema = z.object({
+  scheduler_enabled: z.boolean(),
+  scheduler_frequency: z.literal("daily"),
+  scheduler_time: z.string(),
+  timezone: z.string(),
+  discovery_lookback_days: z.number().int().min(1).max(30),
+  extraction_interval_seconds: z.number().min(1).max(3600),
+  pipeline_concurrent_limit: z.number().int().min(1).max(3),
+  pipeline_retry_attempts: z.number().int().min(0).max(10),
+  auto_cleanup_enabled: z.boolean(),
+  min_free_disk_mb: z.number().int().min(50).max(102400),
+  updated_at: z.string().nullable().optional(),
+});
+
+export type PipelineSettings = z.infer<typeof pipelineSettingsSchema>;
+
+export function getPipelineSettings(
+  signal?: AbortSignal,
+): Promise<PipelineSettings> {
+  return apiGet("settings/pipeline", pipelineSettingsSchema, signal);
+}
+
+export function updatePipelineSettings(
+  payload: Omit<PipelineSettings, "updated_at">,
+): Promise<PipelineSettings> {
+  return apiPut("settings/pipeline", payload, pipelineSettingsSchema);
+}

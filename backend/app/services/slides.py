@@ -56,6 +56,7 @@ class SlideService:
         self.settings = settings
         self.lock = media_lock
         self.events: dict[int, threading.Event] = {}
+        self.futures: dict[int, Future[None]] = {}
         self.stopping = threading.Event()
         assert settings.temp_dir is not None
         self.root = settings.temp_dir / "slides"
@@ -143,7 +144,12 @@ class SlideService:
         event = threading.Event()
         self.events[state.video_id] = event
         future = self.pool.submit(self._run, state, event)
+        self.futures[state.video_id] = future
         future.add_done_callback(lambda result: self._report(state.video_id, result))
+
+    def get_future(self, video_id: int) -> Future[None] | None:
+        with self.lock:
+            return self.futures.get(video_id)
 
     def _report(self, video_id: int, future: Future[None]) -> None:
         if not future.cancelled() and (error := future.exception()) is not None:

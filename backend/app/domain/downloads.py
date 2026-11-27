@@ -16,6 +16,7 @@ class DownloadStatus(StrEnum):
     DOWNLOADED = "downloaded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    CLEANED = "cleaned"
 
 
 class DownloadError(Exception):

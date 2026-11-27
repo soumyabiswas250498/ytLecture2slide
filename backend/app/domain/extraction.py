@@ -14,6 +14,7 @@ class ExtractionStatus(StrEnum):
     EXTRACTED = "extracted"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    CLEANED = "cleaned"
 
 
 class ExtractionError(Exception):

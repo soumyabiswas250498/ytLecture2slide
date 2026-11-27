@@ -4,7 +4,14 @@ import { config } from "@/lib/config";
 
 export const extractionSchema = z.object({
   video_id: z.number(),
-  status: z.enum(["pending", "extracting", "extracted", "failed", "cancelled"]),
+  status: z.enum([
+    "pending",
+    "extracting",
+    "extracted",
+    "failed",
+    "cancelled",
+    "cleaned",
+  ]),
   progress: z.number(),
   requested: z.boolean(),
   interval_seconds: z.number(),

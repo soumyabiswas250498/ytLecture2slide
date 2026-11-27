@@ -10,6 +10,7 @@ from app.api.channels import router as channels_router
 from app.api.extractions import router as extraction_router
 from app.api.health import router as health_router
 from app.api.pdfs import router as pdfs_router
+from app.api.pipeline import router as pipeline_router
 from app.api.settings import router as settings_router
 from app.api.slides import router as slides_router
 from app.api.videos import discovery_router, videos_router
@@ -21,18 +22,24 @@ from app.infrastructure.frame_extractor import FFmpegFrameExtractor
 from app.infrastructure.media_probe import FFprobeValidator
 from app.infrastructure.pdf_generator import PyMuPdfGenerator
 from app.infrastructure.storage import Storage
+from app.infrastructure.youtube_client import YouTubeApiClient
 from app.infrastructure.ytdlp_downloader import YtDlpVideoDownloader
 from app.repositories.channels import ChannelRepository
 from app.repositories.extractions import ExtractionRepository
 from app.repositories.pdfs import PdfRepository
+from app.repositories.pipeline import PipelineRepository
 from app.repositories.settings import SettingsRepository
 from app.repositories.slides import ChannelBoardProfileRepository, SlideRepository
 from app.repositories.videos import VideoRepository
+from app.services.discovery import DiscoveryService
 from app.services.downloader import VideoDownloadService
 from app.services.exclusion import VideoExclusionService
 from app.services.extraction import ExtractionService
 from app.services.imaging.pipeline import SlideProcessor
 from app.services.pdfs import PdfService
+from app.services.pipeline import PipelineOrchestrator
+from app.services.pipeline_cleanup import PipelineCleanupService
+from app.services.scheduler import PipelineSchedulerService
 from app.services.slides import SlideService
 
 
@@ -124,9 +131,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             download_service.recover_interrupted_downloads()
             app.state.download_service = download_service
+
+            pipeline_cleanup_service = PipelineCleanupService(
+                settings=config,
+                media_lock=media_lock,
+                video_repo=VideoRepository(sessions),
+                extraction_repo=ExtractionRepository(sessions),
+                slide_repo=SlideRepository(sessions),
+                pdf_repo=PdfRepository(sessions),
+                download_service=download_service,
+                extraction_service=extraction_service,
+                slide_service=slide_service,
+                pdf_service=pdf_service,
+            )
+            app.state.pipeline_cleanup_service = pipeline_cleanup_service
+
+            def build_discovery() -> DiscoveryService | None:
+                if not config.youtube_api_key:
+                    return None
+                return DiscoveryService(
+                    youtube_client=YouTubeApiClient(
+                        config.youtube_api_key,
+                        quota_limit=config.discovery_quota_limit,
+                        search_quota_limit=config.discovery_search_quota_limit,
+                    ),
+                    channel_repo=ChannelRepository(sessions),
+                    video_repo=VideoRepository(sessions),
+                    settings=config,
+                    exclusion_service=exclusion_service,
+                )
+
+            pipeline_repo = PipelineRepository(sessions)
+            pipeline_orchestrator = PipelineOrchestrator(
+                settings=config,
+                pipeline_repo=pipeline_repo,
+                settings_repo=SettingsRepository(sessions),
+                video_repo=VideoRepository(sessions),
+                extraction_repo=ExtractionRepository(sessions),
+                slide_repo=SlideRepository(sessions),
+                pdf_repo=PdfRepository(sessions),
+                exclusion_service=exclusion_service,
+                download_service=download_service,
+                extraction_service=extraction_service,
+                slide_service=slide_service,
+                pdf_service=pdf_service,
+                cleanup_service=pipeline_cleanup_service,
+                discovery_factory=build_discovery,
+            )
+            app.state.pipeline_orchestrator = pipeline_orchestrator
+
+            scheduler_service = PipelineSchedulerService(
+                engine=engine,
+                orchestrator=pipeline_orchestrator,
+                pipeline_repo=pipeline_repo,
+                misfire_grace_seconds=config.scheduler_misfire_grace_seconds,
+                start_scheduler=config.app_env != "test",
+            )
+            app.state.scheduler_service = scheduler_service
+            pipeline_orchestrator.recover()
+
             logging.getLogger("app").info("Application started")
             yield
         finally:
+            if hasattr(app.state, "scheduler_service"):
+                app.state.scheduler_service.shutdown()
+            if hasattr(app.state, "pipeline_orchestrator"):
+                app.state.pipeline_orchestrator.shutdown()
             if hasattr(app.state, "pdf_service"):
                 app.state.pdf_service.shutdown()
             if hasattr(app.state, "slide_service"):
@@ -148,6 +218,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["Content-Type"],
     )
     register_error_handlers(app)
+    app.include_router(pipeline_router)
     app.include_router(pdfs_router)
     app.include_router(slides_router)
     app.include_router(extraction_router)

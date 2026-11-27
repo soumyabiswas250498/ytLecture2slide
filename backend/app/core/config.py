@@ -67,6 +67,15 @@ class Settings(BaseSettings):
     pdf_zip_max_total_bytes: int = Field(default=2 * 1024 * 1024 * 1024, ge=1024 * 1024)
     pdf_generation: PdfConfig = Field(default_factory=PdfConfig)
 
+    scheduler_enabled: bool = True
+    scheduler_frequency: Literal["daily"] = "daily"
+    scheduler_time: str = "03:00"
+    scheduler_misfire_grace_seconds: int = Field(default=3600, ge=60, le=86400)
+    pipeline_concurrent_limit: int = Field(default=1, ge=1, le=3)
+    pipeline_retry_attempts: int = Field(default=3, ge=0, le=10)
+    pipeline_min_free_disk_mb: int = Field(default=500, ge=50, le=102400)
+    auto_cleanup_enabled: bool = True
+
     def __repr__(self) -> str:
         """Mask youtube_api_key to prevent accidental log exposure."""
         masked = "***" if self.youtube_api_key else None

@@ -22,6 +22,7 @@ const slideStatusTone: Record<string, StatusTone> = {
   processed: "success",
   failed: "error",
   cancelled: "warning",
+  cleaned: "neutral",
 };
 
 export function SlideControls({

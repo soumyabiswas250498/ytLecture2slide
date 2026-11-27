@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Download, FileText, Film, Layers } from "lucide-react";
+import { Download, FileText, Film, Layers, PlayCircle } from "lucide-react";
 import { ActionButton } from "@/components/shared/action-button";
 import { BulkActionToolbar } from "@/components/shared/bulk-action-toolbar";
 import {
@@ -29,6 +29,7 @@ import {
   processSelected,
   type getSlideState as getSlideStateFn,
 } from "@/services/slides";
+import { triggerPipelineRun } from "@/services/pipeline";
 import { startBulkDownload, type Video } from "@/services/videos";
 import type { z } from "zod";
 
@@ -259,6 +260,25 @@ export function UnifiedBulkToolbar({
     return { eligible, excluded };
   }, [selectedVideos, slideById, pdfById]);
 
+  const pipelineEligibility = useMemo(() => {
+    const eligible: Video[] = [];
+    const excluded: { title: string; reason: string }[] = [];
+    for (const v of selectedVideos) {
+      if (v.is_excluded) {
+        excluded.push({
+          title: v.title,
+          reason:
+            v.excluded_keywords.length > 0
+              ? `Excluded by keyword(s): ${v.excluded_keywords.join(", ")}`
+              : "Excluded by keyword",
+        });
+      } else {
+        eligible.push(v);
+      }
+    }
+    return { eligible, excluded };
+  }, [selectedVideos]);
+
   const buildBulkFeedback = (
     actionLabel: string,
     startedCount: number,
@@ -387,13 +407,37 @@ export function UnifiedBulkToolbar({
     },
   });
 
+  const pipelineMutation = useMutation({
+    mutationFn: (videoIds: number[]) =>
+      triggerPipelineRun({ video_ids: videoIds }),
+    onSuccess: (run) => {
+      setFeedback({
+        tone: pipelineEligibility.excluded.length > 0 ? "warning" : "success",
+        summary: `Started pipeline run #${run.id} for ${pluralizeVideos(pipelineEligibility.eligible.length)}.`,
+        details: pipelineEligibility.excluded.map(
+          (item) => `${item.title} — ${item.reason}`,
+        ),
+      });
+      void queryClient.invalidateQueries({ queryKey: ["pipeline"] });
+      void queryClient.invalidateQueries({ queryKey: ["videos"] });
+    },
+    onError: (err) => {
+      setFeedback({
+        tone: "error",
+        summary: `Process All Stages failed: ${getErrorMessage(err)}`,
+        details: [],
+      });
+    },
+  });
+
   const intervalInvalid =
     interval !== undefined && (!Number.isFinite(interval) || interval < 0.001);
   const anyPending =
     downloadMutation.isPending ||
     extractionMutation.isPending ||
     slideMutation.isPending ||
-    pdfMutation.isPending;
+    pdfMutation.isPending ||
+    pipelineMutation.isPending;
 
   const downloadDisabled =
     downloadEligibility.eligible.length === 0 || anyPending;
@@ -403,6 +447,8 @@ export function UnifiedBulkToolbar({
     intervalInvalid;
   const slideDisabled = slideEligibility.eligible.length === 0 || anyPending;
   const pdfDisabled = pdfEligibility.eligible.length === 0 || anyPending;
+  const pipelineDisabled =
+    pipelineEligibility.eligible.length === 0 || anyPending;
 
   return (
     <div className="space-y-2">
@@ -518,6 +564,27 @@ export function UnifiedBulkToolbar({
             className="h-8 w-20 rounded-md border border-border bg-white px-2 text-xs text-foreground tabular-nums focus:border-primary focus:outline-none"
           />
         </label>
+        <ActionButton
+          variant="outline"
+          size="sm"
+          disabled={pipelineDisabled}
+          tooltip={
+            selectedVideos.length === 0
+              ? "Select eligible videos to run all missing stages"
+              : pipelineEligibility.eligible.length === 0
+                ? "No selected videos are eligible for automated processing"
+                : `Process all stages for ${pluralizeVideos(pipelineEligibility.eligible.length)}`
+          }
+          ariaLabel={`Process All Stages (${pipelineEligibility.eligible.length})`}
+          onClick={() =>
+            pipelineMutation.mutate(
+              pipelineEligibility.eligible.map((v) => v.id),
+            )
+          }
+        >
+          <PlayCircle size={14} aria-hidden="true" />
+          Process All Stages ({pipelineEligibility.eligible.length})
+        </ActionButton>
       </BulkActionToolbar>
 
       {feedback && (

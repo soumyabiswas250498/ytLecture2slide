@@ -108,6 +108,8 @@ class VideoResponse(BaseModel):
     updated_at: datetime
     is_excluded: bool = False
     excluded_keywords: list[str] = []
+    intermediates_cleaned: bool = False
+    intermediates_cleaned_at: datetime | None = None
 
     @classmethod
     def from_entity(cls, entity: VideoEntity) -> "VideoResponse":
@@ -143,6 +145,8 @@ class VideoResponse(BaseModel):
             updated_at=entity.updated_at,
             is_excluded=entity.is_excluded,
             excluded_keywords=entity.excluded_keywords,
+            intermediates_cleaned=entity.intermediates_cleaned,
+            intermediates_cleaned_at=entity.intermediates_cleaned_at,
         )
 
 

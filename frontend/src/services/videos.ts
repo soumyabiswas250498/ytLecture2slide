@@ -29,6 +29,7 @@ export const DownloadStatus = z.enum([
   "downloaded",
   "failed",
   "cancelled",
+  "cleaned",
 ]);
 export type DownloadStatus = z.infer<typeof DownloadStatus>;
 
@@ -63,6 +64,8 @@ export const videoSchema = z.object({
   updated_at: z.string(),
   is_excluded: z.boolean().optional().default(false),
   excluded_keywords: z.array(z.string()).optional().default([]),
+  intermediates_cleaned: z.boolean().optional(),
+  intermediates_cleaned_at: z.string().nullable().optional(),
 });
 export type Video = z.infer<typeof videoSchema>;
 

@@ -65,6 +65,7 @@ class ExtractionService:
         self._settings = settings
         self._lock = media_lock
         self._events: dict[int, threading.Event] = {}
+        self._futures: dict[int, Future[None]] = {}
         self._shutdown = threading.Event()
         self._pool = ThreadPoolExecutor(
             max_workers=settings.extraction_concurrent_limit, thread_name_prefix="frame-extraction"
@@ -150,9 +151,14 @@ class ExtractionService:
         event = threading.Event()
         self._events[state.video_id] = event
         future = self._pool.submit(self._run, state, event)
+        self._futures[state.video_id] = future
         future.add_done_callback(
             lambda completed: self._report_worker_error(state.video_id, completed)
         )
+
+    def get_future(self, video_id: int) -> Future[None] | None:
+        with self._lock:
+            return self._futures.get(video_id)
 
     @staticmethod
     def _report_worker_error(video_id: int, future: Future[None]) -> None:

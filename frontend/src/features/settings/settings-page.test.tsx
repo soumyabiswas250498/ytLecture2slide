@@ -70,6 +70,22 @@ describe("SettingsPage", () => {
       ],
       updated_at: null,
     });
+    vi.mocked(settingsApi.getPipelineSettings).mockResolvedValue({
+      scheduler_enabled: true,
+      scheduler_frequency: "daily",
+      scheduler_time: "03:00",
+      timezone: "Asia/Kolkata",
+      discovery_lookback_days: 7,
+      extraction_interval_seconds: 60,
+      pipeline_concurrent_limit: 1,
+      pipeline_retry_attempts: 3,
+      auto_cleanup_enabled: true,
+      min_free_disk_mb: 500,
+      updated_at: null,
+    });
+    vi.mocked(settingsApi.updatePipelineSettings).mockImplementation(
+      async (payload) => ({ ...payload, updated_at: "2026-11-27T10:00:00Z" }),
+    );
     vi.mocked(settingsApi.updatePdfSettings).mockImplementation(
       async (compression) => ({
         compression,
@@ -189,5 +205,34 @@ describe("SettingsPage", () => {
     expect(
       screen.queryByRole("button", { name: /Save PDF settings/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("renders and saves scheduling, processing, and storage settings", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />, { wrapper });
+
+    expect(
+      await screen.findByText("Automation, Processing & Storage"),
+    ).toBeInTheDocument();
+    const timeInput = screen.getByLabelText("Daily execution time");
+    await user.clear(timeInput);
+    await user.type(timeInput, "04:15");
+
+    const cleanupSwitch = screen.getByRole("switch", {
+      name: "Automatic intermediate cleanup",
+    });
+    await user.click(cleanupSwitch);
+
+    await user.click(
+      screen.getByRole("button", { name: /Save Pipeline Settings/i }),
+    );
+    await waitFor(() =>
+      expect(settingsApi.updatePipelineSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scheduler_time: "04:15",
+          auto_cleanup_enabled: false,
+        }),
+      ),
+    );
   });
 });

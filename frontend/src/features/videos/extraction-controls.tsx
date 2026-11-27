@@ -22,6 +22,7 @@ const extractionTone: Record<string, StatusTone> = {
   extracted: "success",
   failed: "error",
   cancelled: "warning",
+  cleaned: "neutral",
 };
 
 export function ExtractionControls({

@@ -7,7 +7,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -65,6 +65,7 @@ class VideoDownloadService:
         self._extraction_guard = extraction_guard
         self._active_videos: set[int] = set()
         self._cancel_events: dict[int, threading.Event] = {}
+        self._futures: dict[int, Future[None]] = {}
         self._live_progress: dict[int, DownloadProgress] = {}
         self._shutdown_event = threading.Event()
         self._executor = ThreadPoolExecutor(
@@ -208,6 +209,9 @@ class VideoDownloadService:
                 is_live=True,
             )
 
+        if video.intermediates_cleaned:
+            self._repo.mark_intermediates_cleaned(video_id, cleaned=False, cleaned_at=None)
+
         updated = self._repo.update_download_state(
             video_id,
             download_status=DownloadStatus.DOWNLOADING,
@@ -221,8 +225,18 @@ class VideoDownloadService:
         )
         assert updated is not None
 
-        self._executor.submit(self._run_download_task, video, cancel_event, 0)
+        future = self._executor.submit(self._run_download_task, video, cancel_event, 0)
+        with self._lock:
+            self._futures[video_id] = future
         return updated
+
+    def get_future(self, video_id: int) -> Future[None] | None:
+        with self._lock:
+            return self._futures.get(video_id)
+
+    def is_download_active(self, video_id: int) -> bool:
+        with self._lock:
+            return video_id in self._active_videos
 
     def start_bulk_download(self, video_ids: list[int]) -> BulkDownloadSummary:
         """Initiate downloads for multiple selected videos, reporting per-item outcomes."""

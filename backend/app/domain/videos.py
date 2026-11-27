@@ -80,6 +80,8 @@ class VideoEntity:
     youtube_channel_id: str | None = None
     is_excluded: bool = False
     excluded_keywords: list[str] = field(default_factory=list)
+    intermediates_cleaned: bool = False
+    intermediates_cleaned_at: datetime | None = None
 
 
 @dataclass(frozen=True)

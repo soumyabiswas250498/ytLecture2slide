@@ -53,6 +53,8 @@ Status: Phase 1, Phase 2, Phase 3, and Phase 4 verified; final verification reco
 
 ## Phase 8 — Pipeline, queue and scheduler
 
+- Status: **Verified (2026-11-27)**. Backend 272 tests passed (0 skipped), Ruff lint/format, strict mypy (87 files), Alembic `b2c3d4e5f6a7` upgrade/check, frontend 61 Vitest tests (13 files), ESLint/Prettier/`tsc -b`/Vite build, 15 local and 15 Docker Playwright E2E tests, Docker real-world pipeline execution + cleanup (1,404 intermediate files / ~2.87 GiB reclaimed), temporary scheduled trigger verification + 03:00 IST restore, and container recreation persistence passed. See docs/PHASE8_REPORT.md. Phase 9 remains not started.
+
 - Scope: integrate completed modules; durable run/job state, one worker by default, daily 03:00 Asia/Kolkata schedule, manual run, bounded retries, safe cleanup and interrupted-job recovery. No continuous discovery.
 - Acceptance: full local fixture-to-PDF integration; duplicate and overlapping runs prevented; restart and publication-crash recovery tested; schedule/timezone tested; successful job-owned files cleaned only after verified publication.
 

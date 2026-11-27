@@ -23,6 +23,7 @@ from app.domain.downloads import (
 from app.domain.exclusion import VideoExcludedError
 from app.domain.extraction import ExtractionConflict, ExtractionError
 from app.domain.pdfs import PdfConflict, PdfError, PdfNotFoundError
+from app.domain.pipeline import PipelineConflictError, PipelineError, PipelineNotFoundError
 from app.domain.videos import (
     DiscoveryAlreadyRunningError,
     QuotaExhaustedError,
@@ -67,6 +68,18 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(PdfError)
     async def pdf_error(request: Request, exc: PdfError) -> JSONResponse:
         return error_response(422, "pdf_error", str(exc))
+
+    @app.exception_handler(PipelineConflictError)
+    async def pipeline_conflict(request: Request, exc: PipelineConflictError) -> JSONResponse:
+        return error_response(409, "pipeline_conflict", str(exc))
+
+    @app.exception_handler(PipelineNotFoundError)
+    async def pipeline_not_found(request: Request, exc: PipelineNotFoundError) -> JSONResponse:
+        return error_response(404, "pipeline_not_found", str(exc))
+
+    @app.exception_handler(PipelineError)
+    async def pipeline_error(request: Request, exc: PipelineError) -> JSONResponse:
+        return error_response(422, "pipeline_error", str(exc))
 
     @app.exception_handler(ChannelNotFoundError)
     async def channel_not_found(request: Request, exc: ChannelNotFoundError) -> JSONResponse:

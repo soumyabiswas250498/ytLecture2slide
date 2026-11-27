@@ -71,3 +71,10 @@ class VideoExclusionService:
                 format_exclusion_reason(video.excluded_keywords),
                 video.excluded_keywords,
             )
+
+    def reevaluate_all_videos(self) -> int:
+        with self._lock:
+            settings = self._settings_repo.get_exclusion_keywords()
+            return self._video_repo.reevaluate_exclusions(
+                lambda title: match_title(title, settings.keywords)
+            )

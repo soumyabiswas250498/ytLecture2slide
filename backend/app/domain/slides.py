@@ -200,7 +200,9 @@ class SlideManifest(BaseModel):
 class SlideState(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     video_id: int
-    status: Literal["pending", "processing", "processed", "failed", "cancelled"] = "pending"
+    status: Literal["pending", "processing", "processed", "failed", "cancelled", "cleaned"] = (
+        "pending"
+    )
     requested: bool = False
     progress: float = 0
     input_count: int = 0

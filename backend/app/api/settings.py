@@ -14,6 +14,7 @@ from app.domain.pdfs import (
     PdfCompressionMode,
     PdfConfig,
 )
+from app.domain.pipeline import PipelineSettings
 from app.repositories.settings import SettingsRepository
 from app.services.exclusion import VideoExclusionService
 
@@ -150,3 +151,31 @@ def update_pdf_settings(
         options=PDF_COMPRESSION_OPTIONS,
         updated_at=updated_at,
     )
+
+
+class PipelineSettingsResponse(PipelineSettings):
+    updated_at: datetime | None = None
+
+
+@router.get("/pipeline", response_model=PipelineSettingsResponse)
+def get_pipeline_settings(
+    request: Request,
+    repo: SettingsRepoDep,
+) -> PipelineSettingsResponse:
+    orchestrator = request.app.state.pipeline_orchestrator
+    defaults: PipelineSettings = orchestrator.default_pipeline_settings()
+    cfg, updated_at = repo.get_pipeline_settings(defaults)
+    return PipelineSettingsResponse(**cfg.model_dump(), updated_at=updated_at)
+
+
+@router.put("/pipeline", response_model=PipelineSettingsResponse)
+def update_pipeline_settings(
+    payload: PipelineSettings,
+    request: Request,
+    repo: SettingsRepoDep,
+) -> PipelineSettingsResponse:
+    saved, updated_at = repo.save_pipeline_settings(payload)
+    scheduler = getattr(request.app.state, "scheduler_service", None)
+    if scheduler is not None:
+        scheduler.sync_schedule(saved)
+    return PipelineSettingsResponse(**saved.model_dump(), updated_at=updated_at)

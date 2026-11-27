@@ -166,6 +166,9 @@ def test_migration_configuration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
             "channel_board_profiles",
             "app_settings",
             "pdf_generations",
+            "pipeline_runs",
+            "pipeline_run_videos",
+            "apscheduler_jobs",
         }
 
 

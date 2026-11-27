@@ -95,6 +95,10 @@ class VideoRecord(Base):
     download_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_excluded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     matched_exclusion_keywords: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intermediates_cleaned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    intermediates_cleaned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )
@@ -199,3 +203,65 @@ class PdfGenerationRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
     )
+
+
+class PipelineRunRecord(Base):
+    __tablename__ = "pipeline_runs"
+    __table_args__ = (
+        Index("ix_pipeline_runs_status", "status"),
+        Index("ix_pipeline_runs_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trigger_type: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="idle")
+    current_video_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    current_video_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    current_stage_progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    total_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    excluded_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    skipped_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cancelled_videos: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reprocess_existing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    target_video_ids_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    logs_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now
+    )
+
+
+class PipelineRunVideoRecord(Base):
+    __tablename__ = "pipeline_run_videos"
+    __table_args__ = (
+        UniqueConstraint("run_id", "video_id", name="uq_pipeline_run_videos_run_video"),
+        Index("ix_pipeline_run_videos_run_id", "run_id"),
+        Index("ix_pipeline_run_videos_video_id", "video_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    video_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False
+    )
+    video_title: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    youtube_video_id: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    current_stage: Mapped[str] = mapped_column(String(32), nullable=False, default="idle")
+    stage_progress: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cleaned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

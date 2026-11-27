@@ -42,7 +42,7 @@ The application does not extract MCQs, perform OCR, transcribe audio or call an 
 
 ## Development status
 
-Phase 1 foundation, Phase 2 channel management, Phase 3 video discovery, Phase 4 video acquisition, Phase 5 frame extraction, Phase 6 smartboard processing, and Phase 7 PDF generation & PDF Library (with configurable lossless/JPEG compression and channel metadata preservation) are implemented and verified. Daily scheduling and full pipeline orchestration (Phase 8+) remain future work. See the [Phase 7 report](docs/PHASE7_REPORT.md) and [Phase 6 report](docs/PHASE6_REPORT.md) for visual examples, measurements and limitations. Future navigation sections (`Processing Jobs`) explicitly state that they are unavailable. See [Phase 1 report](docs/PHASE1_REPORT.md), [Phase 2 report](docs/PHASE2_REPORT.md), [Phase 3 report](docs/PHASE3_REPORT.md), and [Phase 4 report](docs/PHASE4_REPORT.md) for verification evidence and limitations.
+Phase 1 foundation, Phase 2 channel management, Phase 3 video discovery, Phase 4 video acquisition, Phase 5 frame extraction, Phase 6 smartboard processing, Phase 7 PDF generation & PDF Library, and Phase 8 automated pipeline orchestration, daily APScheduler scheduling, and validated intermediate cleanup are implemented and verified. See [Phase 8 report](docs/PHASE8_REPORT.md), [Phase 7 report](docs/PHASE7_REPORT.md), and [Phase 6 report](docs/PHASE6_REPORT.md) for visual examples, measurements and limitations. See [Phase 1 report](docs/PHASE1_REPORT.md), [Phase 2 report](docs/PHASE2_REPORT.md), [Phase 3 report](docs/PHASE3_REPORT.md), and [Phase 4 report](docs/PHASE4_REPORT.md) for earlier verification evidence.
 
 ## Local setup
 
